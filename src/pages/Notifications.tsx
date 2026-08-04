@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  Bell, Volume2, CheckCheck, Trash2, AlertTriangle, Info, CheckCircle2, 
+import {
+  Bell, Volume2, CheckCheck, Trash2, AlertTriangle, Info, CheckCircle2,
   MessageCircle, Settings2, Sparkles, Filter, ChevronRight, ArrowUpDown, Clock
 } from 'lucide-react';
 import { useLiftStore } from '../stores/useLiftStore';
-import { playElevatorChime } from '../utils/audio';
+import { playElevatorChime, speakText } from '../utils/audio';
 import { AppNotification } from '../types';
 import { toast } from 'sonner';
 
@@ -29,6 +29,10 @@ export const NotificationsPage: React.FC = () => {
     toast.success('🔔 Đã phát thử âm thanh chuông thang máy!');
   };
 
+  const handleTestTTS = () => {
+    speakText('Thông báo! Thang P1 đã vận chuyển hàng đến Tầng 3. Mời nhân viên kiểm tra kéo hàng!');
+    toast.success('📢 Đã kích hoạt giọng nói TTS (Tiếng Việt)! Nếu không nghe thấy, vui lòng mở ứng dụng trong Tab mới (bấm nút "Open in new tab" ở góc trên bên phải) do chính sách bảo mật iframe của trình duyệt.');
+  };
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
       case 'warning':
@@ -90,6 +94,14 @@ export const NotificationsPage: React.FC = () => {
           >
             <Volume2 className="w-4 h-4" />
             <span>Thử Chuông Tời</span>
+          </button>
+
+          <button
+            onClick={handleTestTTS}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+          >
+            <Volume2 className="w-4 h-4 animate-bounce" />
+            <span>Thử Giọng Nói (TTS)</span>
           </button>
 
           <button
@@ -190,11 +202,10 @@ export const NotificationsPage: React.FC = () => {
           <button
             key={tab.key}
             onClick={() => setSelectedCategory(tab.key)}
-            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-colors cursor-pointer ${
-              selectedCategory === tab.key
-                ? 'bg-amber-500 text-white shadow-xs'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
-            }`}
+            className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-colors cursor-pointer ${selectedCategory === tab.key
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+              }`}
           >
             {tab.label}
           </button>
@@ -214,11 +225,10 @@ export const NotificationsPage: React.FC = () => {
             <div
               key={notif.id}
               onClick={() => markNotificationRead(notif.id)}
-              className={`p-4 md:p-5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-4 ${
-                !notif.is_read
-                  ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60 shadow-xs'
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-              }`}
+              className={`p-4 md:p-5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-4 ${!notif.is_read
+                ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60 shadow-xs'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                }`}
             >
               <div className="flex items-start gap-3.5">
                 {getSeverityIcon(notif.severity)}
