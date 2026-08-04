@@ -25,7 +25,7 @@ interface TelegramState {
   botName: string;
   botUsername: string;
   isConnected: boolean;
-  
+
   // Floor Routing Configuration
   defaultChatId: string;
   techChatId: string;
@@ -47,31 +47,31 @@ interface TelegramState {
   setDefaultChatId: (chatId: string) => void;
   setTechChatId: (chatId: string) => void;
   toggleTrigger: (key: 'autoSendUrgentJob' | 'autoSendUncollectedCargo' | 'autoSendLiftArrival' | 'autoSendLiftMaintenance') => void;
-  
+
   addLog: (log: Omit<TelegramLog, 'id' | 'timestamp'>) => void;
   clearLogs: () => void;
   loadLogsFromDb: () => Promise<void>;
   loadSettingsFromDb: () => Promise<void>;
   saveSettingsToDb: () => Promise<void>;
-  
+
   sendTelegramMessage: (params: { chatId?: string; targetGroupLabel?: string; message: string }) => Promise<{ success: boolean; messageId?: number; error?: string }>;
 }
 
 export const useTelegramStore = create<TelegramState>()(
   persist(
     (set, get) => ({
-      botToken: '7829103845:AAHqK8x9pLzM2_W0rT1vU3yZ_example',
-      botName: 'W.L.D.S Kho Lift Bot',
-      botUsername: 'wlds_kho_elevator_bot',
+      botToken: '8893527039:AAG9dkuaijXHURBKRkFKH5Fb89da1B_Jgx8',
+      botName: 'WLDSLiftAlert_Bot',
+      botUsername: '@WLDSLiftAlert_Bot',
       isConnected: true,
 
-      defaultChatId: '-1002145892301',
-      techChatId: '-1002145892306',
+      defaultChatId: '-1004305175504',
+      techChatId: '-1004305175504',
       floorConfigs: {
-        1: { floor: 1, chatId: '-1002145892302', groupName: 'KHO TẦNG 1 - TỜI HÀNG', enabled: true },
-        2: { floor: 2, chatId: '-1002145892303', groupName: 'KHO TẦNG 2 - TỜI HÀNG', enabled: true },
-        3: { floor: 3, chatId: '-1002145892304', groupName: 'KHO TẦNG 3 - TỜI HÀNG', enabled: true },
-        4: { floor: 4, chatId: '-1002145892305', groupName: 'KHO TẦNG 4 - TỜI HÀNG', enabled: true },
+        1: { floor: 1, chatId: '-1004305175504', groupName: 'KHO TẦNG 1 - TỜI HÀNG', enabled: true },
+        2: { floor: 2, chatId: '-5579825961', groupName: 'KHO TẦNG 2 - TỜI HÀNG', enabled: true },
+        3: { floor: 3, chatId: '-5354334551', groupName: 'KHO TẦNG 3 - TỜI HÀNG', enabled: true },
+        4: { floor: 4, chatId: '-5303441991', groupName: 'KHO TẦNG 4 - TỜI HÀNG', enabled: true },
       },
 
       autoSendUrgentJob: true,
@@ -117,7 +117,7 @@ export const useTelegramStore = create<TelegramState>()(
         set({ botName: info.name, botUsername: info.username, isConnected: info.isConnected });
         get().saveSettingsToDb();
       },
-      
+
       updateFloorConfig: (floor, updates) => {
         set((state) => ({
           floorConfigs: {
@@ -136,7 +136,7 @@ export const useTelegramStore = create<TelegramState>()(
         set({ techChatId: chatId });
         get().saveSettingsToDb();
       },
-      
+
       toggleTrigger: (key) => {
         set((state) => ({ [key]: !state[key] }));
         get().saveSettingsToDb();
@@ -157,7 +157,7 @@ export const useTelegramStore = create<TelegramState>()(
               if (s.setting_key === 'FLOOR_CONFIGS' && s.setting_value) {
                 try {
                   updates.floorConfigs = JSON.parse(s.setting_value);
-                } catch {}
+                } catch { }
               }
               if (s.setting_key === 'AUTO_TRIGGERS' && s.setting_value) {
                 try {
@@ -166,7 +166,7 @@ export const useTelegramStore = create<TelegramState>()(
                   if (tr.autoSendUncollectedCargo !== undefined) updates.autoSendUncollectedCargo = tr.autoSendUncollectedCargo;
                   if (tr.autoSendLiftArrival !== undefined) updates.autoSendLiftArrival = tr.autoSendLiftArrival;
                   if (tr.autoSendLiftMaintenance !== undefined) updates.autoSendLiftMaintenance = tr.autoSendLiftMaintenance;
-                } catch {}
+                } catch { }
               }
             });
             if (Object.keys(updates).length > 0) {
