@@ -14,7 +14,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { isSupabaseConfigured } from '../api/dbClient';
 import { getSupabase } from '../api/supabase';
 
-const POLL_INTERVAL_MS = 15_000; // 60 giây
+const POLL_INTERVAL_MS = 10_000; // 10 giây
 
 /** Module-level singletons — tránh đăng ký trùng khi component re-render */
 let _channels: any[] = [];
