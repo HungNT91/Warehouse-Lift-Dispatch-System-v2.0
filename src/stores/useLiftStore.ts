@@ -443,21 +443,27 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         return 1;
       };
 
-      const mappedLifts: Lift[] = dbLifts.map(d => ({
-        id: d.id,
-        lift_number: d.lift_name || d.lift_code || d.id,
-        current_floor: parseFloor(d.current_floor),
-        destination_floor: null,
-        status: (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE',
-        operator: d.current_job ? userMap['u3'] || 'Phạm Lan Trang' : null,
-        current_job_id: d.current_job || null,
-        elapsed_time: null,
-        last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
-        progress: d.status_id === 2 ? 65 : 0,
-        created_at: new Date().toISOString(),
-        updated_at: d.last_update || new Date().toISOString(),
-      }));
+      const mappedLifts: Lift[] = dbLifts.map(d => {
+        const activeJob = d.current_job ? dbJobs.find(j => j.id === d.current_job || j.job_no === d.current_job) : null;
+        const destFloor = activeJob ? parseFloor(activeJob.to_floor) : null;
+        const srcFloor = activeJob ? parseFloor(activeJob.from_floor) : null;
 
+        return {
+          id: d.id,
+          lift_number: d.lift_name || d.lift_code || d.id,
+          current_floor: parseFloor(d.current_floor),
+          destination_floor: destFloor,
+          source_floor: srcFloor,
+          status: (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE',
+          operator: d.current_job ? userMap['u3'] || 'Phạm Lan Trang' : null,
+          current_job_id: d.current_job || null,
+          elapsed_time: null,
+          last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
+          progress: d.status_id === 2 ? 65 : 0,
+          created_at: new Date().toISOString(),
+          updated_at: d.last_update || new Date().toISOString(),
+        };
+      });
       // Map jobs
       const mappedJobs: Job[] = dbJobs.map(j => ({
         id: j.id,
