@@ -563,34 +563,34 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       });
 
       // ─────────────────────────────────────────────────────────────────────
-      // Smart-merge: giữ lại các trường ephemeral (chỉ tồn tại trong memory)
-      // của những thang đang MOVING / WAITING_PICKUP để tránh polling reset.
+      // Smart-merge: giữ lại các trường ephemeral (như progress, elapsed_time)
+      // CHỈ KHI cả DB và Local có CÙNG trạng thái hoạt động (MOVING hoặc WAITING_PICKUP).
+      // Nếu DB đã đổi trạng thái (ví dụ từ WAITING_PICKUP sang AVAILABLE do tầng B bấm xác nhận),
+      // bắt buộc phải cập nhật ngay trạng thái từ DB để thiết bị của nhân viên A không bị kẹt
       // ─────────────────────────────────────────────────────────────────────
       const currentLifts = get().lifts;
       const mergedLifts: Lift[] = mappedLifts.map(dbLift => {
         const localLift = currentLifts.find(l => l.id === dbLift.id);
 
-        // Nếu thang đang hoạt động (MOVING/WAITING_PICKUP) trong local state,
-        // ưu tiên giữ lại các trường ephemeral không được lưu trong DB.
-        const isLocallyActive = localLift && (
-          localLift.status === 'MOVING' || localLift.status === 'WAITING_PICKUP'
-        );
+        if (!localLift) return dbLift;
 
-        if (isLocallyActive && localLift) {
+        const sameActiveStatus =
+          (dbLift.status === localLift.status) &&
+          (dbLift.status === 'MOVING' || dbLift.status === 'WAITING_PICKUP');
+
+        if (sameActiveStatus) {
           return {
             ...dbLift,
-            // Giữ lại trạng thái local nếu DB cũng là MOVING/WAITING_PICKUP,
-            // vì DB có thể bị trễ 1 tick so với local update
-            status: localLift.status,
-            // Preserve các trường ephemeral không được lưu vào DB
-            destination_floor: localLift.destination_floor ?? dbLift.destination_floor,
-            source_floor: localLift.source_floor ?? dbLift.source_floor,
-            progress: localLift.progress,
+            progress: dbLift.status === 'MOVING' ? localLift.progress : dbLift.progress,
             elapsed_time: localLift.elapsed_time,
             pickup_start_time: localLift.pickup_start_time ?? dbLift.pickup_start_time,
+
+            destination_floor: localLift.destination_floor ?? dbLift.destination_floor,
+            source_floor: localLift.source_floor ?? dbLift.source_floor,
+
             current_job_id: localLift.current_job_id ?? dbLift.current_job_id,
             operator: localLift.operator ?? dbLift.operator,
-            last_update: localLift.last_update,
+            last_update: localLift.last_update ?? dbLift.last_update,
           };
         }
 

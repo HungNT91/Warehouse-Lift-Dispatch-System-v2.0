@@ -30,9 +30,10 @@ export function Dashboard() {
     const levels = [4, 3, 2, 1];
     return levels.map(level => {
       // Waiting jobs originating at this floor or waiting pickup
-      const waitingJobsAtFloor = jobs.filter(j => 
-        j.source_floor === level && (j.status === 'CREATED' || j.status === 'WAITING_PICKUP')
-      );
+      const waitingJobsAtFloor = jobs.filter(j =>
+        (j.source_floor === level && j.status === 'CREATED') ||
+        (j.target_floor === level && j.status === 'WAITING_PICKUP'))
+        ;
 
       // Lifts currently at this floor
       const liftsAtFloor = lifts
@@ -98,10 +99,10 @@ export function Dashboard() {
         {/* Right Sidebar Area (Floors & Feed) */}
         <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-6 min-h-0 w-full">
           <div className="flex-none lg:max-h-[50%] lg:overflow-hidden h-auto max-h-[300px] lg:h-auto">
-             <FloorPanel floors={dynamicFloors} />
+            <FloorPanel floors={dynamicFloors} />
           </div>
           <div className="flex-1 lg:overflow-hidden min-h-0 h-auto max-h-[350px] sm:max-h-[400px] lg:max-h-none lg:h-auto">
-             <ActivityFeed activities={activities} />
+            <ActivityFeed activities={activities} />
           </div>
         </div>
       </div>

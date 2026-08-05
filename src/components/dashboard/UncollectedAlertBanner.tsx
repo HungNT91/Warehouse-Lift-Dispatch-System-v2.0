@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 
 export const UncollectedAlertBanner: React.FC = () => {
-  const { lifts, updateLift } = useLiftStore();
+  const { lifts, updateLift, updateJob } = useLiftStore(); const { lifts, updateLift } = useLiftStore();
   const { user, assignment } = useAuthStore();
 
   const waitingLifts = lifts.filter((l) => l.status === 'WAITING_PICKUP');
@@ -84,6 +84,10 @@ export const UncollectedAlertBanner: React.FC = () => {
   };
 
   const handleQuickPickup = (lift: any, returnToSource = false) => {
+    if (lift.current_job_id) {
+      updateJob(lift.current_job_id, { status: 'COMPLETED' });
+    }
+
     if (returnToSource && lift.source_floor && lift.source_floor !== lift.current_floor) {
       updateLift(lift.id, {
         status: 'MOVING',
