@@ -17,7 +17,7 @@ export function AssignmentPage() {
 
   const handleConfirm = async () => {
     if (!selectedLift || !selectedFloor || !user) return;
-    
+
     setIsSubmitting(true);
     try {
       const assignmentData = await db.dailyAssignments.create({
@@ -49,7 +49,7 @@ export function AssignmentPage() {
         created_at: assignmentData.created_at,
         updated_at: assignmentData.created_at
       } as Assignment);
-      
+
       toast.success(`Đã lưu phân công ${liftName} - Tầng ${selectedFloor}`);
       navigate('/');
     } catch (error: any) {
@@ -77,7 +77,7 @@ export function AssignmentPage() {
               <p className="text-xs font-medium text-slate-500">Hệ Thống Quản Lý Thang Tời Kho</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={handleLogout}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
           >
@@ -102,38 +102,39 @@ export function AssignmentPage() {
                 <Package className="w-4 h-4 text-blue-600" /> Bước 1: Chọn Thang
               </label>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {lifts.map((lift) => {
-                  const isMaintenance = lift.status === 'MAINTENANCE';
-                  const isSelected = selectedLift === lift.id;
-                  
-                  return (
-                    <button
-                      key={lift.id}
-                      disabled={isMaintenance}
-                      onClick={() => setSelectedLift(lift.id)}
-                      className={`relative p-4 rounded-2xl border-2 text-left transition-all ${
-                        isMaintenance 
-                          ? 'opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50' 
-                          : isSelected
-                            ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-md shadow-blue-500/10'
-                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700 cursor-pointer'
-                      }`}
-                    >
-                      {isSelected && (
-                        <div className="absolute top-3 right-3 text-blue-600 dark:text-blue-400">
-                          <CheckCircle2 className="w-4 h-4" />
-                        </div>
-                      )}
-                      <Package className={`w-6 h-6 mb-2 ${isMaintenance ? 'text-slate-400' : isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`} />
-                      <h3 className={`font-bold text-base ${isMaintenance ? 'text-slate-500' : 'text-slate-900 dark:text-white'}`}>
-                        {lift.lift_number.replace('Lift ', 'Tời ')}
-                      </h3>
-                      <p className={`text-[10px] mt-0.5 font-bold uppercase tracking-wider ${isMaintenance ? 'text-slate-400' : isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-500'}`}>
-                        {lift.status === 'AVAILABLE' ? 'SẴN SÀNG' : lift.status === 'MAINTENANCE' ? 'BẢO TRÌ' : lift.status}
-                      </p>
-                    </button>
-                  );
-                })}
+                {[...lifts]
+                  .sort((a, b) => a.lift_number.localeCompare(b.lift_number, undefined, { numeric: true, sensitivity: 'base' }))
+                  .map((lift) => {
+                    const isMaintenance = lift.status === 'MAINTENANCE';
+                    const isSelected = selectedLift === lift.id;
+
+                    return (
+                      <button
+                        key={lift.id}
+                        disabled={isMaintenance}
+                        onClick={() => setSelectedLift(lift.id)}
+                        className={`relative p-4 rounded-2xl border-2 text-left transition-all ${isMaintenance
+                            ? 'opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50'
+                            : isSelected
+                              ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-md shadow-blue-500/10'
+                              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-700 cursor-pointer'
+                          }`}
+                      >
+                        {isSelected && (
+                          <div className="absolute top-3 right-3 text-blue-600 dark:text-blue-400">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </div>
+                        )}
+                        <Package className={`w-6 h-6 mb-2 ${isMaintenance ? 'text-slate-400' : isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`} />
+                        <h3 className={`font-bold text-base ${isMaintenance ? 'text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                          {lift.lift_number.replace('Lift ', 'Tời ')}
+                        </h3>
+                        <p className={`text-[10px] mt-0.5 font-bold uppercase tracking-wider ${isMaintenance ? 'text-slate-400' : isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-500'}`}>
+                          {lift.status === 'AVAILABLE' ? 'SẴN SÀNG' : lift.status === 'MAINTENANCE' ? 'BẢO TRÌ' : lift.status}
+                        </p>
+                      </button>
+                    );
+                  })}
               </div>
             </div>
 
@@ -149,11 +150,10 @@ export function AssignmentPage() {
                     <button
                       key={floor}
                       onClick={() => setSelectedFloor(floor)}
-                      className={`p-4 rounded-2xl border-2 text-center transition-all cursor-pointer ${
-                        isSelected
+                      className={`p-4 rounded-2xl border-2 text-center transition-all cursor-pointer ${isSelected
                           ? 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-500/20 font-black'
                           : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white hover:border-blue-300 font-bold'
-                      }`}
+                        }`}
                     >
                       <span className="text-xl block">Tầng {floor}</span>
                       <span className={`text-[10px] uppercase tracking-wider ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>

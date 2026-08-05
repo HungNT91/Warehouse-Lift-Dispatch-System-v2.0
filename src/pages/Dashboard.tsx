@@ -14,10 +14,14 @@ export function Dashboard() {
   const { assignment } = useAuthStore();
   const [showAllLifts, setShowAllLifts] = useState(false);
 
-  const displayedLifts = (assignment && !showAllLifts)
-    ? lifts.filter(lift => lift.id === assignment.lift_id)
-    : lifts;
-
+  const displayedLifts = useMemo(() => {
+    const list = (assignment && !showAllLifts)
+      ? lifts.filter(lift => lift.id === assignment.lift_id)
+      : lifts;
+    return [...list].sort((a, b) =>
+      a.lift_number.localeCompare(b.lift_number, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [assignment, showAllLifts, lifts]);
   // Compute dynamic floors state from real jobs and lifts
   const dynamicFloors: Floor[] = useMemo(() => {
     const floorEmployeeMap: Record<number, string> = {
