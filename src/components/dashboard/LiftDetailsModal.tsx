@@ -2,19 +2,19 @@ import React from 'react';
 import { Lift, Job } from '../../types';
 import { useLiftStore } from '../../stores/useLiftStore';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { 
-  X, 
-  Play, 
-  AlertOctagon, 
-  Lock, 
-  Unlock, 
-  Clock, 
-  ArrowRight, 
-  User, 
-  Package, 
-  CheckCircle2, 
-  XCircle, 
-  Activity, 
+import {
+  X,
+  Play,
+  AlertOctagon,
+  Lock,
+  Unlock,
+  Clock,
+  ArrowRight,
+  User,
+  Package,
+  CheckCircle2,
+  XCircle,
+  Activity,
   History,
   Layers,
   FileText
@@ -64,9 +64,9 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
   const activeJob = liftJobs.find(j => j.id === lift.current_job_id || j.code === lift.current_job_id || j.status === 'CREATED' || j.status === 'WAITING_PICKUP');
 
   // Derive real operator name from current active job sender, lift operator, or last job creator
-  const operatorName = activeJob?.creator_name 
-    || lift.operator 
-    || (liftJobs.length > 0 ? liftJobs[0].creator_name : null) 
+  const operatorName = activeJob?.creator_name
+    || lift.operator
+    || (liftJobs.length > 0 ? liftJobs[0].creator_name : null)
     || (lift.status === 'AVAILABLE' ? 'Rảnh' : 'Nhân viên kho');
 
   const theme = statusThemes[lift.status] || statusThemes['AVAILABLE'];
@@ -74,7 +74,7 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 md:p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div 
+      <div
         className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -118,7 +118,7 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
             <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tầng Đích</span>
               <span className="text-lg font-black text-blue-600 dark:text-blue-400">
-                {lift.destination_floor ? `Tầng ${lift.destination_floor}` : 'Khống có'}
+                {lift.destination_floor ? `Tầng ${lift.destination_floor}` : 'Không có'}
               </span>
             </div>
 
@@ -145,8 +145,8 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
                 <span>{Math.round(lift.progress)}%</span>
               </div>
               <div className="w-full bg-blue-200 dark:bg-blue-900/60 h-2.5 rounded-full overflow-hidden">
-                <div 
-                  className="bg-blue-600 dark:bg-blue-500 h-full transition-all duration-300 ease-out" 
+                <div
+                  className="bg-blue-600 dark:bg-blue-500 h-full transition-all duration-300 ease-out"
                   style={{ width: `${lift.progress}%` }}
                 />
               </div>
@@ -233,8 +233,8 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
             {liftJobs.length > 0 ? (
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {liftJobs.map((job) => (
-                  <div 
-                    key={job.id} 
+                  <div
+                    key={job.id}
                     className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between text-xs"
                   >
                     <div className="flex items-center gap-2.5">
@@ -255,8 +255,8 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
                     <span className={cn(
                       "px-2 py-0.5 rounded-md font-bold text-[10px] uppercase",
                       job.status === 'COMPLETED' ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" :
-                      job.status === 'CANCELLED' ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" :
-                      "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
+                        job.status === 'CANCELLED' ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" :
+                          "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
                     )}>
                       {job.status === 'COMPLETED' ? 'Hoàn thành' : job.status === 'CANCELLED' ? 'Đã hủy' : job.status}
                     </span>
