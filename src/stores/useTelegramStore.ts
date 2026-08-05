@@ -203,14 +203,14 @@ export const useTelegramStore = create<TelegramState>()(
 
       addLog: (logData) => {
         db.telegramLogs.log({
-          user_id: 'u1',
+          user_id: 'Hệ Thống',
           telegram_chat_id: logData.chatId,
           message: logData.message,
           status: logData.status
         }).catch(console.error);
 
         db.activityLogs.add({
-          user_id: 'u1',
+          user_id: 'Hệ Thống',
           action: 'TELEGRAM_DISPATCH',
           table_name: 'telegram_logs',
           record_id: logData.chatId,
