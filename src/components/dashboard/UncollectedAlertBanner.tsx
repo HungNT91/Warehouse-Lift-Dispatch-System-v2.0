@@ -113,14 +113,14 @@ export const UncollectedAlertBanner: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-sm uppercase tracking-wide">
-              CẢNH BÁO HÀNG TẠI THANG CHƯA LẤY ({waitingLifts.length} TỜI)
+              CẢNH BÁO HÀNG TẠI THANG CHƯA LẤY ({waitingLifts.length} THANG)
             </span>
             <span className="px-2 py-0.5 bg-white/20 text-white rounded-full text-[10px] font-black uppercase">
               KHÓA GỌI THANG
             </span>
           </div>
           <p className="text-xs text-amber-50 font-medium mt-0.5 max-w-2xl">
-            Tất cả các tầng khác bị tạm khóa gọi tời cho đến khi nhân viên tại tầng đích lấy hàng ra khỏi tời và bấm xác nhận.
+            Tất cả các tầng khác bị tạm khóa gọi thang cho đến khi nhân viên tại tầng đích lấy hàng ra khỏi thang và bấm xác nhận.
           </p>
         </div>
       </div>
