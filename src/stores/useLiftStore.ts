@@ -459,9 +459,12 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       };
 
       const mappedLifts: Lift[] = dbLifts.map(d => {
-        const activeJob = d.current_job ? dbJobs.find(j => j.id === d.current_job || j.job_no === d.current_job) : null;
-        const destFloor = activeJob ? parseFloor(activeJob.to_floor) : null;
-        const srcFloor = activeJob ? parseFloor(activeJob.from_floor) : null;
+        const activeJob = d.current_job
+          ? (dbJobs.find(j => j.id === d.current_job || j.job_no === d.current_job || (j as any).code === d.current_job) ||
+            get().jobs.find(j => j.id === d.current_job || j.code === d.current_job))
+          : null;
+        const destFloor = activeJob ? parseFloor((activeJob as any).to_floor || (activeJob as any).target_floor) : null;
+        const srcFloor = activeJob ? parseFloor((activeJob as any).from_floor || (activeJob as any).source_floor) : null;
         const liftStatus = (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE';
 
         let pickupStartTime: number | null = null;
@@ -605,23 +608,32 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
         if (!localLift) return dbLift;
 
-        const sameActiveStatus =
-          (dbLift.status === localLift.status) &&
-          (dbLift.status === 'MOVING' || dbLift.status === 'WAITING_PICKUP');
-
-        if (sameActiveStatus) {
+        if (localLift.status === 'MOVING') {
+          const newStatus = dbLift.status === 'WAITING_PICKUP' ? 'WAITING_PICKUP' : 'MOVING';
           return {
             ...dbLift,
-            progress: dbLift.status === 'MOVING' ? localLift.progress : dbLift.progress,
+            status: newStatus,
+            progress: newStatus === 'MOVING' ? localLift.progress : 0,
             elapsed_time: localLift.elapsed_time,
             pickup_start_time: dbLift.pickup_start_time ?? localLift.pickup_start_time,
-
             destination_floor: localLift.destination_floor ?? dbLift.destination_floor,
             source_floor: localLift.source_floor ?? dbLift.source_floor,
-
             current_job_id: localLift.current_job_id ?? dbLift.current_job_id,
             operator: localLift.operator ?? dbLift.operator,
             last_update: localLift.last_update ?? dbLift.last_update,
+          };
+        }
+
+        if (localLift.status === 'WAITING_PICKUP') {
+          const newStatus = dbLift.status === 'AVAILABLE' ? 'AVAILABLE' : 'WAITING_PICKUP';
+          return {
+            ...dbLift,
+            status: newStatus,
+            pickup_start_time: newStatus === 'WAITING_PICKUP' ? (dbLift.pickup_start_time ?? localLift.pickup_start_time) : null,
+            destination_floor: newStatus === 'WAITING_PICKUP' ? (localLift.destination_floor ?? dbLift.destination_floor) : null,
+            source_floor: newStatus === 'WAITING_PICKUP' ? (localLift.source_floor ?? dbLift.source_floor) : null,
+            current_job_id: newStatus === 'WAITING_PICKUP' ? (localLift.current_job_id ?? dbLift.current_job_id) : null,
+            operator: newStatus === 'WAITING_PICKUP' ? (localLift.operator ?? dbLift.operator) : null,
           };
         }
 
