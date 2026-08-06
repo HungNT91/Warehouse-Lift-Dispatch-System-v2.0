@@ -157,7 +157,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       creator_name: user?.full_name || 'Nhân viên kho',
       source_floor: lift.current_floor,
       target_floor: targetFloor,
-      status: 'CREATED',
+      status: 'MOVING',
       item_type: 'Pallet Hàng',
       quantity: 1,
       notes: `Gửi hàng từ Tầng ${lift.current_floor} đến Tầng ${targetFloor}`
@@ -173,6 +173,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       current_job_id: realJobId || null,
       operator: user?.full_name || 'Nhân viên kho'
     });
+
+    if (realJobId) {
+      updateJob(realJobId, { status: 'MOVING' });
+    }
+
     toast.success(`Đã gửi hàng từ Tầng ${lift.current_floor} đến Tầng ${targetFloor}`);
   };
 
@@ -200,7 +205,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         creator_name: user?.full_name || 'Nhân viên kho',
         source_floor: lift.current_floor,
         target_floor: target,
-        status: 'CREATED',
+        status: 'MOVING',
         item_type: 'Trả tời trống',
         quantity: 1,
         notes: `Trả tời về Tầng ${target} sau khi lấy hàng ở Tầng ${lift.current_floor}`
@@ -217,6 +222,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         current_job_id: returnJobId || null,
         operator: user?.full_name || 'Nhân viên kho'
       });
+
+      if (returnJobId) {
+        updateJob(returnJobId, { status: 'MOVING' });
+      }
+
       toast.success(`Đã xác nhận lấy hàng & tự động trả ${lift.lift_number.replace('Lift ', 'Tời ')} về Tầng ${target}`);
     } else {
       updateLift(lift.id, {
@@ -243,14 +253,13 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       return;
     }
 
-    const newJobCode = `CALL-${Math.floor(Math.random() * 9000) + 1000}`;
     const createdJob = await addJob({
       lift_id: lift.id,
       created_by: user?.id || 'u1',
       creator_name: user?.full_name || 'Nhân viên kho',
       source_floor: lift.current_floor,
       target_floor: assignment.assigned_floor,
-      status: 'CREATED',
+      status: 'MOVING',
       item_type: 'Gọi tời trống',
       quantity: 1,
       notes: `Gọi tời từ Tầng ${lift.current_floor} về Tầng ${assignment.assigned_floor}`
@@ -266,6 +275,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       current_job_id: realJobId || null,
       operator: user?.full_name || 'Nhân viên kho'
     });
+
+    if (realJobId) {
+      updateJob(realJobId, { status: 'MOVING' });
+    }
+
     toast.success(`Đã gọi ${lift.lift_number.replace('Lift ', 'Tời ')} từ Tầng ${lift.current_floor} về Tầng ${assignment.assigned_floor}`);
   };
 

@@ -98,7 +98,7 @@ export const UncollectedAlertBanner: React.FC = () => {
         creator_name: user?.full_name || 'Nhân viên kho',
         source_floor: lift.current_floor,
         target_floor: lift.source_floor,
-        status: 'CREATED',
+        status: 'MOVING',
         item_type: 'Trả tời trống',
         quantity: 1,
         notes: `Trả tời về Tầng ${lift.source_floor} sau khi lấy hàng ở Tầng ${lift.current_floor}`
@@ -115,6 +115,10 @@ export const UncollectedAlertBanner: React.FC = () => {
         current_job_id: returnJobId || null,
         operator: user?.full_name || 'Nhân viên kho'
       });
+
+      if (returnJobId) {
+        updateJob(returnJobId, { status: 'MOVING' });
+      }
       toast.success(`Đã xác nhận lấy hàng & tự động trả ${lift.lift_number.replace('Lift ', 'Tời ')} về Tầng ${lift.source_floor}`);
     } else {
       updateLift(lift.id, {

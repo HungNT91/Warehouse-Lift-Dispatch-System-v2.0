@@ -400,7 +400,18 @@ export const db = {
       const realLiftId = resolveLiftUuid(id);
       const cleanUpdates = { ...updates };
       if (cleanUpdates.current_floor) cleanUpdates.current_floor = resolveFloorUuid(cleanUpdates.current_floor);
-      if (cleanUpdates.current_job) cleanUpdates.current_job = isUuid(cleanUpdates.current_job) ? cleanUpdates.current_job : null;
+      if (cleanUpdates.current_job) {
+        if (isUuid(cleanUpdates.current_job)) {
+          cleanUpdates.current_job = String(cleanUpdates.current_job);
+        } else {
+          const matchedJob = mockDbData.transportJobs.find(j => j.id === cleanUpdates.current_job || j.job_no === cleanUpdates.current_job);
+          if (matchedJob) {
+            cleanUpdates.current_job = matchedJob.id;
+          } else {
+            cleanUpdates.current_job = String(cleanUpdates.current_job);
+          }
+        }
+      }
 
       if (isSupabaseConfigured()) {
         const { error } = await getSupabase().from('lifts').update({ ...cleanUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);

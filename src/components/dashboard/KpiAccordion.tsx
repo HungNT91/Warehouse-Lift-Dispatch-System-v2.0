@@ -23,9 +23,9 @@ export const KpiAccordion: React.FC = () => {
     // --- Thang bảo trì / offline ---
     const maintenanceLifts = lifts.filter(l => l.status === 'MAINTENANCE' || l.status === 'OFFLINE' || l.status === 'LOCKED').length;
 
-    // --- Việc đang xử lý (CREATED, WAITING_PICKUP, PICKED_UP) ---
+    // --- Việc đang xử lý (CREATED, MOVING, WAITING_PICKUP, PICKED_UP) ---
     const activeJobs = jobs.filter(j =>
-      j.status === 'CREATED' || j.status === 'WAITING_PICKUP' || j.status === 'PICKED_UP'
+      j.status === 'CREATED' || j.status === 'MOVING' || j.status === 'WAITING_PICKUP' || j.status === 'PICKED_UP' || (j.status as string) === 'IN_PROGRESS'
     ).length;
 
     // --- Đã hoàn thành hôm nay ---

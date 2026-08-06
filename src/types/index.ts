@@ -13,13 +13,13 @@ export type User = {
   updated_at: string;
 };
 
-export type LiftStatus = 
-  | 'AVAILABLE' 
-  | 'WAITING_PICKUP' 
-  | 'MOVING' 
-  | 'RESERVED' 
-  | 'LOCKED' 
-  | 'OFFLINE' 
+export type LiftStatus =
+  | 'AVAILABLE'
+  | 'WAITING_PICKUP'
+  | 'MOVING'
+  | 'RESERVED'
+  | 'LOCKED'
+  | 'OFFLINE'
   | 'MAINTENANCE'
   | 'STOPPED';
 
@@ -43,11 +43,13 @@ export type Lift = {
 
 export type JobPriority = 'NORMAL' | 'HIGH' | 'URGENT';
 
-export type JobStatus = 
-  | 'CREATED' 
-  | 'WAITING_PICKUP' 
-  | 'PICKED_UP' 
-  | 'COMPLETED' 
+export type JobStatus =
+  | 'CREATED'
+  | 'MOVING'
+  | 'IN_PROGRESS'
+  | 'WAITING_PICKUP'
+  | 'PICKED_UP'
+  | 'COMPLETED'
   | 'CANCELLED';
 
 export type Job = {
