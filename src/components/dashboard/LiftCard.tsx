@@ -89,18 +89,54 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
           speakLiftArrival(lift.lift_number, destFloor);
         }
 
-        updateLift(lift.id, {
-          status: 'WAITING_PICKUP',
-          current_floor: destFloor,
-          destination_floor: null,
-          pickup_start_time: Date.now(),
-          progress: 0
-        });
-        if (lift.current_job_id) {
-          updateJob(lift.current_job_id, { status: 'WAITING_PICKUP' });
+        // Check if current active job is an empty call or return job
+        const { jobs } = useLiftStore.getState();
+        const activeJob = lift.current_job_id
+          ? jobs.find(j => j.id === lift.current_job_id || j.code === lift.current_job_id)
+          : null;
+
+        const isEmptyCall = activeJob
+          ? (
+            activeJob.item_type?.includes('Gọi tời') ||
+            activeJob.item_type?.includes('Trả tời') ||
+            activeJob.notes?.includes('Gọi tời') ||
+            activeJob.notes?.includes('Trả tời') ||
+            activeJob.item_type?.includes('tời trống')
+          )
+          : false;
+
+        if (isEmptyCall) {
+          // Empty call/return lift arriving at destination -> Immediately AVAILABLE
+          updateLift(lift.id, {
+            status: 'AVAILABLE',
+            current_floor: destFloor,
+            destination_floor: null,
+            source_floor: null,
+            pickup_start_time: null,
+            current_job_id: null,
+            operator: null,
+            progress: 0
+          });
+          if (lift.current_job_id) {
+            updateJob(lift.current_job_id, { status: 'COMPLETED' });
+          }
+          toast.success(`${lift.lift_number.replace('Lift ', 'Tời ')} đã đến Tầng ${destFloor} và sẵn sàng!`);
+        } else {
+          // Loaded cargo lift arriving at destination -> WAITING_PICKUP
+          updateLift(lift.id, {
+            status: 'WAITING_PICKUP',
+            current_floor: destFloor,
+            destination_floor: null,
+            pickup_start_time: Date.now(),
+            progress: 0
+          });
+          if (lift.current_job_id) {
+            updateJob(lift.current_job_id, { status: 'WAITING_PICKUP' });
+          }
         }
       }
     }
+
     return () => clearTimeout(timer);
   }, [lift.status, lift.progress, lift.destination_floor, lift.current_floor, lift.id, lift.current_job_id, updateLift, updateJob]);
 
@@ -124,12 +160,14 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       notes: `Gửi hàng từ Tầng ${lift.current_floor} đến Tầng ${targetFloor}`
     });
 
+    const realJobId = createdJob?.id || createdJob?.code;
+
     updateLift(lift.id, {
       status: 'MOVING',
       source_floor: lift.current_floor,
       destination_floor: targetFloor,
       progress: 0,
-      current_job_id: createdJob ? createdJob.id : undefined,
+      current_job_id: realJobId || null,
       operator: user?.full_name || 'Nhân viên kho'
     });
     toast.success(`Đã gửi hàng từ Tầng ${lift.current_floor} đến Tầng ${targetFloor}`);
@@ -165,13 +203,15 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         notes: `Trả tời về Tầng ${target} sau khi lấy hàng ở Tầng ${lift.current_floor}`
       });
 
+      const returnJobId = returnJob?.id || returnJob?.code;
+
       updateLift(lift.id, {
         status: 'MOVING',
         destination_floor: target,
         source_floor: lift.current_floor,
         pickup_start_time: null,
         progress: 0,
-        current_job_id: returnJob ? returnJob.id : undefined,
+        current_job_id: returnJobId || null,
         operator: user?.full_name || 'Nhân viên kho'
       });
       toast.success(`Đã xác nhận lấy hàng & tự động trả ${lift.lift_number.replace('Lift ', 'Tời ')} về Tầng ${target}`);
@@ -213,12 +253,14 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       notes: `Gọi tời từ Tầng ${lift.current_floor} về Tầng ${assignment.assigned_floor}`
     });
 
+    const realJobId = createdJob?.id || createdJob?.code;
+
     updateLift(lift.id, {
       status: 'MOVING',
       destination_floor: assignment.assigned_floor,
       source_floor: lift.current_floor,
       progress: 0,
-      current_job_id: newJobCode,
+      current_job_id: realJobId || null,
       operator: user?.full_name || 'Nhân viên kho'
     });
     toast.success(`Đã gọi ${lift.lift_number.replace('Lift ', 'Tời ')} từ Tầng ${lift.current_floor} về Tầng ${assignment.assigned_floor}`);

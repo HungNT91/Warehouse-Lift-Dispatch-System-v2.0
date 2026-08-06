@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
 
 export const UncollectedAlertBanner: React.FC = () => {
-  const { lifts, updateLift, updateJob } = useLiftStore();
+  const { lifts, updateLift, updateJob, addJob } = useLiftStore();
   const { user, assignment } = useAuthStore();
 
   const waitingLifts = lifts.filter((l) => l.status === 'WAITING_PICKUP');
@@ -83,26 +83,43 @@ export const UncollectedAlertBanner: React.FC = () => {
     return `${m > 0 ? `${m}m ` : ''}${s < 10 ? '0' : ''}${s}s`;
   };
 
-  const handleQuickPickup = (lift: any, returnToSource = false) => {
+  const handleQuickPickup = async (lift: any, returnToSource = false) => {
     if (lift.current_job_id) {
       updateJob(lift.current_job_id, { status: 'COMPLETED' });
     }
 
     if (returnToSource && lift.source_floor && lift.source_floor !== lift.current_floor) {
+      const returnJob = await addJob({
+        lift_id: lift.id,
+        created_by: user?.id || 'u1',
+        creator_name: user?.full_name || 'Nhân viên kho',
+        source_floor: lift.current_floor,
+        target_floor: lift.source_floor,
+        status: 'CREATED',
+        item_type: 'Trả tời trống',
+        quantity: 1,
+        notes: `Trả tời về Tầng ${lift.source_floor} sau khi lấy hàng ở Tầng ${lift.current_floor}`
+      });
+
+      const returnJobId = returnJob?.id || returnJob?.code;
+
       updateLift(lift.id, {
         status: 'MOVING',
         destination_floor: lift.source_floor,
         source_floor: lift.current_floor,
         pickup_start_time: null,
         progress: 0,
-        current_job_id: `RET-${Math.floor(Math.random() * 9000) + 1000}`
+        current_job_id: returnJobId || null,
+        operator: user?.full_name || 'Nhân viên kho'
       });
       toast.success(`Đã xác nhận lấy hàng & tự động trả ${lift.lift_number.replace('Lift ', 'Tời ')} về Tầng ${lift.source_floor}`);
     } else {
       updateLift(lift.id, {
         status: 'AVAILABLE',
         current_job_id: null,
-        pickup_start_time: null
+        pickup_start_time: null,
+        source_floor: null,
+        operator: null
       });
       toast.success(`Đã xác nhận lấy hàng thành công tại Tầng ${lift.current_floor}`);
     }
