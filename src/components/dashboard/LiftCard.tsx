@@ -42,7 +42,10 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
   useEffect(() => {
     let interval: any;
     if (lift.status === 'WAITING_PICKUP') {
-      const startTime = lift.pickup_start_time || Date.now();
+      const rawStart = lift.pickup_start_time;
+      const startTime = typeof rawStart === 'number'
+        ? rawStart
+        : (rawStart ? new Date(rawStart).getTime() : Date.now());
       const calcSecs = () => Math.max(0, Math.floor((Date.now() - startTime) / 1000));
       setWaitingSeconds(calcSecs());
 

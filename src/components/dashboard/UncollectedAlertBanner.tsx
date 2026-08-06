@@ -30,7 +30,10 @@ export const UncollectedAlertBanner: React.FC = () => {
       });
 
       waitingLifts.forEach((lift) => {
-        const start = lift.pickup_start_time || now;
+        const rawStart = lift.pickup_start_time;
+        const start = typeof rawStart === 'number'
+          ? rawStart
+          : (rawStart ? new Date(rawStart).getTime() : now);
         const elapsedSecs = Math.max(0, Math.floor((now - start) / 1000));
         newTimers[lift.id] = elapsedSecs;
 

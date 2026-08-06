@@ -46,11 +46,23 @@ export function useRealtimeSync() {
     if (!isAuthenticated || _initialized) return;
     _initialized = true;
 
+    // Direct storage event listener for cross-tab synchronization in local storage mode
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'liftflow_db_store_v2') {
+        refresh();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
     if (!isSupabaseConfigured()) {
-      console.info('[RealtimeSync] Supabase chưa cấu hình → chỉ Polling 60s.');
+      console.info('[RealtimeSync] Supabase chưa cấu hình → chỉ Polling & Storage Event.');
       setSyncStatus('polling');
       _startPolling();
-      return;
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+        _stopPolling();
+        _initialized = false;
+      };
     }
 
     setSyncStatus('connecting');
@@ -58,6 +70,7 @@ export function useRealtimeSync() {
     _startPolling(); // luôn giữ polling làm dự phòng
 
     return () => {
+      window.removeEventListener('storage', handleStorageChange);
       _stopRealtimeSubscriptions();
       _stopPolling();
       _initialized = false;
