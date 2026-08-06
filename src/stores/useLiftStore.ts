@@ -64,6 +64,21 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     if (updates.current_job_id !== undefined) {
       dbUpdates.current_job = updates.current_job_id;
     }
+
+    // Direct synchronization for uncollected timer (pickup_start_time)
+    if (updates.status === 'WAITING_PICKUP' && !updates.pickup_start_time) {
+      updates.pickup_start_time = Date.now();
+    } else if (updates.status && updates.status !== 'WAITING_PICKUP') {
+      updates.pickup_start_time = null;
+    }
+
+    if (updates.pickup_start_time !== undefined) {
+      dbUpdates.pickup_start_time = updates.pickup_start_time;
+      if (updates.pickup_start_time) {
+        dbUpdates.last_update = new Date(updates.pickup_start_time).toISOString();
+      }
+    }
+
     db.lifts.update(liftId, dbUpdates).catch(console.error);
 
     // Save lift command log into lift_commands table
@@ -447,6 +462,21 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         const activeJob = d.current_job ? dbJobs.find(j => j.id === d.current_job || j.job_no === d.current_job) : null;
         const destFloor = activeJob ? parseFloor(activeJob.to_floor) : null;
         const srcFloor = activeJob ? parseFloor(activeJob.from_floor) : null;
+        const liftStatus = (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE';
+
+        let pickupStartTime: number | null = null;
+        if (liftStatus === 'WAITING_PICKUP') {
+          if (d.pickup_start_time) {
+            pickupStartTime = typeof d.pickup_start_time === 'number'
+              ? d.pickup_start_time
+              : new Date(d.pickup_start_time).getTime();
+          } else if (d.last_update) {
+            const parsed = new Date(d.last_update).getTime();
+            pickupStartTime = !isNaN(parsed) && parsed > 0 ? parsed : Date.now();
+          } else {
+            pickupStartTime = Date.now();
+          }
+        }
 
         return {
           id: d.id,
@@ -454,10 +484,11 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           current_floor: parseFloor(d.current_floor),
           destination_floor: destFloor,
           source_floor: srcFloor,
-          status: (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE',
+          status: liftStatus,
           operator: d.current_job ? userMap['u3'] || 'Phạm Lan Trang' : null,
           current_job_id: d.current_job || null,
           elapsed_time: null,
+          pickup_start_time: pickupStartTime,
           last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
           progress: d.status_id === 2 ? 65 : 0,
           created_at: new Date().toISOString(),
@@ -583,7 +614,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
             ...dbLift,
             progress: dbLift.status === 'MOVING' ? localLift.progress : dbLift.progress,
             elapsed_time: localLift.elapsed_time,
-            pickup_start_time: localLift.pickup_start_time ?? dbLift.pickup_start_time,
+            pickup_start_time: dbLift.pickup_start_time ?? localLift.pickup_start_time,
 
             destination_floor: localLift.destination_floor ?? dbLift.destination_floor,
             source_floor: localLift.source_floor ?? dbLift.source_floor,

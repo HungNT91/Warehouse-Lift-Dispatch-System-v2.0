@@ -603,7 +603,7 @@ export const db = {
               record_id: newJob.id,
               description: `Tạo công việc vận chuyển #${newJob.job_no} (${newJob.remark || 'Vận chuyển hàng'})`,
               event_type: 'JOB_EVENT'
-            }).catch(() => {});
+            }).catch(() => { });
 
             return data;
           } else if (error) {
@@ -624,7 +624,7 @@ export const db = {
                   record_id: newJob.id,
                   description: `Tạo công việc vận chuyển #${newJob.job_no} (${newJob.remark || 'Vận chuyển hàng'})`,
                   event_type: 'JOB_EVENT'
-                }).catch(() => {});
+                }).catch(() => { });
 
                 return retryData;
               }
@@ -644,7 +644,7 @@ export const db = {
         record_id: newJob.id,
         description: `Tạo công việc vận chuyển #${newJob.job_no} (${newJob.remark || 'Vận chuyển hàng'})`,
         event_type: 'JOB_EVENT'
-      }).catch(() => {});
+      }).catch(() => { });
 
       return newJob;
     },
@@ -1100,7 +1100,8 @@ const initialMockDbData = {
       status_id: 3,
       has_cargo: true,
       current_job: 'j4',
-      last_update: new Date().toISOString(),
+      last_update: new Date(Date.now() - 180000).toISOString(),
+      pickup_start_time: Date.now() - 180000,
       note: 'Tồn hàng chờ dỡ tại Tầng 4 quá 3 phút',
       lock_type: 'NONE'
     },
