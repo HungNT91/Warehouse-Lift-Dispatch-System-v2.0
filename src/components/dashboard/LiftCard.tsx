@@ -241,7 +241,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
     }
 
     const newJobCode = `CALL-${Math.floor(Math.random() * 9000) + 1000}`;
-    await addJob({
+    const createdJob = await addJob({
       lift_id: lift.id,
       created_by: user?.id || 'u1',
       creator_name: user?.full_name || 'Nhân viên kho',
