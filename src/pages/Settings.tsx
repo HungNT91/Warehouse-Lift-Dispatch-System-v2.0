@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { 
-  Settings as SettingsIcon, 
-  Bell, 
-  Volume2, 
-  User, 
-  Shield, 
+import {
+  Settings as SettingsIcon,
+  Bell,
+  Volume2,
+  User,
+  Shield,
   Bot,
   Save,
   Moon,
@@ -41,6 +41,17 @@ export function Settings() {
   const [autoReturnFloor, setAutoReturnFloor] = useState('1');
   const [autoLockOverload, setAutoLockOverload] = useState(true);
 
+  // Account settings state
+  const [accountFullName, setAccountFullName] = useState(user?.full_name || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  useEffect(() => {
+    if (user?.full_name) {
+      setAccountFullName(user.full_name);
+    }
+  }, [user]);
+
   // UI display options
   const [compactMode, setCompactMode] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -69,6 +80,50 @@ export function Settings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      if (activeTab === 'account') {
+        if (!user) {
+          toast.error('Không tìm thấy thông tin người dùng!');
+          setIsSaving(false);
+          return;
+        }
+
+        const updates: any = { full_name: accountFullName };
+
+        if (newPassword || confirmPassword) {
+          if (newPassword !== confirmPassword) {
+            toast.error('Mật khẩu mới và xác nhận mật khẩu không khớp!.');
+            setIsSaving(false);
+            return;
+          }
+          updates.password = newPassword;
+        }
+
+        await db.users.update(user.id, updates);
+        useAuthStore.getState().setAuth({
+          ...user,
+          full_name: accountFullName,
+        });
+
+        await db.activityLogs.add({
+          user_id: user.id,
+          action: 'UPDATE_ACCOUNT',
+          table_name: 'users',
+          record_id: user.id,
+          description: updates.password ? `Đã đổi mật khẩu thành công và cập nhật hồ sơ cá nhân cho nhân viên ${accountFullName}` : `Đã cập nhật hồ sơ cá nhân cho nhân viên ${accountFullName}`,
+          event_type: 'USER_EVENT'
+        }).catch(console.error);
+
+        if (updates.password) {
+          toast.success('Đổi mật khẩu thành công!');
+          setNewPassword('');
+          setConfirmPassword('');
+        } else {
+          toast.success('Cập nhật thông tin tài khoản thành công!');
+        }
+        setIsSaving(false);
+        return;
+      }
+
       await Promise.all([
         db.systemSettings.updateSetting('shift_morning_start', shiftMorningStart),
         db.systemSettings.updateSetting('shift_morning_end', shiftMorningEnd),
@@ -122,44 +177,40 @@ export function Settings() {
           <nav className="flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-x-visible">
             <button
               onClick={() => setActiveTab('general')}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === 'general'
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'general'
+                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
             >
               <Monitor className="w-5 h-5" />
               Giao diện & Hiển thị
             </button>
             <button
               onClick={() => setActiveTab('notifications')}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === 'notifications'
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'notifications'
+                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
             >
               <Bell className="w-5 h-5" />
               Thông báo & Âm thanh
             </button>
             <button
               onClick={() => setActiveTab('system')}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === 'system'
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'system'
+                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
             >
               <Shield className="w-5 h-5" />
               Tham số Tời & Vận hành
             </button>
             <button
               onClick={() => setActiveTab('account')}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === 'account'
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'account'
+                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
             >
               <User className="w-5 h-5" />
               Tài khoản cá nhân
@@ -170,7 +221,7 @@ export function Settings() {
         {/* Settings Content */}
         <div className="flex-1 p-4 md:p-8 overflow-y-auto">
           <div className="max-w-3xl mx-auto space-y-8">
-            
+
             {activeTab === 'general' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div>
@@ -181,22 +232,20 @@ export function Settings() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <button
                     onClick={() => setTheme('light')}
-                    className={`flex flex-col items-center gap-3 p-4 border-2 rounded-2xl transition-all ${
-                      theme === 'light'
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
-                    }`}
+                    className={`flex flex-col items-center gap-3 p-4 border-2 rounded-2xl transition-all ${theme === 'light'
+                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                      }`}
                   >
                     <Sun className="w-8 h-8" />
                     <span className="font-semibold text-sm">Giao diện Sáng</span>
                   </button>
                   <button
                     onClick={() => setTheme('dark')}
-                    className={`flex flex-col items-center gap-3 p-4 border-2 rounded-2xl transition-all ${
-                      theme === 'dark'
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
-                    }`}
+                    className={`flex flex-col items-center gap-3 p-4 border-2 rounded-2xl transition-all ${theme === 'dark'
+                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                      }`}
                   >
                     <Moon className="w-8 h-8" />
                     <span className="font-semibold text-sm">Giao diện Tối</span>
@@ -205,7 +254,7 @@ export function Settings() {
 
                 <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Tùy chọn hiển thị</h3>
-                  
+
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
                       <div>
@@ -246,7 +295,7 @@ export function Settings() {
                       <Volume2 className="w-5 h-5 text-blue-500" />
                       <h3 className="font-bold text-slate-900 dark:text-white text-sm">Cảnh báo Âm thanh</h3>
                     </div>
-                    
+
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-slate-700 dark:text-slate-300">Tời đến tầng</span>
@@ -277,7 +326,7 @@ export function Settings() {
                       <Bot className="w-5 h-5 text-blue-500" />
                       <h3 className="font-bold text-slate-900 dark:text-white text-sm">Tích hợp Telegram</h3>
                     </div>
-                    
+
                     <div className="space-y-4">
                       <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">Bot Token (BotFather)</label>
@@ -317,7 +366,7 @@ export function Settings() {
                     <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                       <Clock className="w-4 h-4 text-blue-500" /> Ca Làm Việc Kho
                     </h3>
-                    
+
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">Ca Sáng (Bắt đầu - Kết thúc)</label>
                       <div className="flex gap-2">
@@ -348,7 +397,7 @@ export function Settings() {
                     <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                       <Shield className="w-4 h-4 text-amber-500" /> Cảnh Báo & Thời Gian
                     </h3>
-                    
+
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">Cảnh báo hàng ngâm chưa dỡ (Phút)</label>
                       <div className="relative">
@@ -460,7 +509,12 @@ export function Settings() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">Họ và tên</label>
-                      <input type="text" defaultValue={user?.full_name || ''} className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input
+                        type="text"
+                        value={accountFullName}
+                        onChange={e => setAccountFullName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
                     </div>
                   </div>
 
@@ -473,7 +527,13 @@ export function Settings() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">Xác nhận mật khẩu mới</label>
-                        <input type="password" placeholder="Bỏ trống nếu không đổi" className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={e => setNewPassword(e.target.value)}
+                          placeholder="Bỏ trống nếu không đổi"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
                       </div>
                     </div>
                   </div>
@@ -500,7 +560,7 @@ export function Settings() {
                 )}
               </button>
             </div>
-            
+
           </div>
         </div>
       </div>
