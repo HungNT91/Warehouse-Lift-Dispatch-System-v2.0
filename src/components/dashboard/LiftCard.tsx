@@ -159,6 +159,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       toast.error(`Bạn được phân công ở Tầng ${assignment?.assigned_floor}. Không thể gửi hàng từ Tầng ${lift.current_floor}!`);
       return;
     }
+    const isAllowed = !lift.allowed_floors || lift.allowed_floors.includes(targetFloor);
+    if (!isAllowed) {
+      toast.error(`🚫 Tầng ${targetFloor} đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này! Không thể gửi hàng đến đây.`);
+      return;
+    }
     setShowFloorSelector(false);
 
     // Save transport job to DB (transport_jobs)
@@ -253,7 +258,14 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
 
   const handleCallLift = async () => {
     if (!assignment?.assigned_floor) return;
+    const targetFloor = assignment.assigned_floor;
 
+    const isAllowedTarget = !lift.allowed_floors || lift.allowed_floors.includes(targetFloor);
+    const isAllowedCurrent = !lift.allowed_floors || lift.allowed_floors.includes(lift.current_floor);
+    if (!isAllowedTarget || !isAllowedCurrent) {
+      toast.error(`🚫 Tầng hiện tại (${lift.current_floor}) hoặc tầng gọi về (${targetFloor}) đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này!`);
+      return;
+    }
     if (lift.status === 'WAITING_PICKUP') {
       toast.error(`🚫 Không thể gọi tời! Tầng ${lift.current_floor} chưa lấy hàng ra khỏi tời. Cần Tầng ${lift.current_floor} bấm xác nhận đã lấy hàng trước!`);
       return;

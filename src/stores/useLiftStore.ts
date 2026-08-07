@@ -246,6 +246,16 @@ export const useLiftStore = create<LiftState>((set, get) => ({
   },
 
   addJob: async (jobData) => {
+    const targetLift = get().lifts.find(l => l.id === jobData.lift_id || l.id === 'L1');
+    if (targetLift && targetLift.allowed_floors) {
+      if (jobData.target_floor && !targetLift.allowed_floors.includes(jobData.target_floor)) {
+        throw new Error(`Tầng ${jobData.target_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+      }
+      if (jobData.source_floor && !targetLift.allowed_floors.includes(jobData.source_floor)) {
+        throw new Error(`Tầng ${jobData.source_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+      }
+    }
+
     const newCode = `TR-${Math.floor(8900 + Math.random() * 200)}`;
     const newJob: Job = {
       id: `job-${Date.now()}`,
