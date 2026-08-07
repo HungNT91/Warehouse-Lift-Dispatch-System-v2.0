@@ -403,8 +403,7 @@ export const db = {
       if (cleanUpdates.current_job) {
         if (!isUuid(cleanUpdates.current_job)) {
           const strJob = String(cleanUpdates.current_job);
-          const matchedJob = mockDbData.transportJobs.find(j => j.id === strJob || j.job_no === strJob) ||
-            cachedJobs.find(j => j.id === strJob || j.job_no === strJob);
+          const matchedJob = mockDbData.transportJobs.find(j => j.id === strJob || j.job_no === strJob);
           if (matchedJob && isUuid(matchedJob.id)) {
             cleanUpdates.current_job = matchedJob.id;
           } else {
@@ -415,7 +414,10 @@ export const db = {
       }
 
       if (isSupabaseConfigured()) {
-        const { error } = await getSupabase().from('lifts').update({ ...cleanUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);
+        const supabaseUpdates = { ...cleanUpdates };
+        delete supabaseUpdates.pickup_start_time;
+
+        const { error } = await getSupabase().from('lifts').update({ ...supabaseUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);
         if (!error) {
           const idx = mockDbData.lifts.findIndex(l => l.id === id || l.id === realLiftId || l.lift_code === id);
           if (idx !== -1) mockDbData.lifts[idx] = { ...mockDbData.lifts[idx], ...cleanUpdates, last_update: new Date().toISOString() };
