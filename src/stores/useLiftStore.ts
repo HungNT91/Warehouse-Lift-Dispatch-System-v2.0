@@ -5,6 +5,7 @@ import { mockLifts, mockJobs, mockNotifications, mockActivities } from '../data/
 import { useTelegramStore } from './useTelegramStore';
 import { useAuthStore } from './useAuthStore';
 import { speakLiftArrival } from '../utils/audio';
+import { safeParseTimestamp } from '../utils/time';
 
 interface LiftState {
   lifts: Lift[];
@@ -509,13 +510,14 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         let pickupStartTime: number | null = null;
         if (liftStatus === 'WAITING_PICKUP') {
           if (d.pickup_start_time) {
-            pickupStartTime = typeof d.pickup_start_time === 'number'
-              ? d.pickup_start_time
-              : new Date(d.pickup_start_time).getTime();
+            pickupStartTime = safeParseTimestamp(d.pickup_start_time);
           } else if (d.last_update) {
-            const parsed = new Date(d.last_update).getTime();
-            pickupStartTime = !isNaN(parsed) && parsed > 0 ? parsed : Date.now();
+            pickupStartTime = safeParseTimestamp(d.last_update);
           } else {
+            pickupStartTime = Date.now();
+          }
+          const diffMs = Date.now() - pickupStartTime;
+          if (diffMs < 0 || diffMs > 2 * 3600 * 1000) {
             pickupStartTime = Date.now();
           }
         }
@@ -687,10 +689,13 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           const hasWaitingJob = mappedJobs.some(j => isSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP');
 
           const newStatus = (dbLift.status === 'AVAILABLE' && !hasWaitingJob) ? 'AVAILABLE' : 'WAITING_PICKUP';
+          const validLocalStart = localLift.pickup_start_time && (Date.now() - localLift.pickup_start_time >= 0 && Date.now() - localLift.pickup_start_time < 2 * 3600 * 1000)
+            ? localLift.pickup_start_time
+            : null;
           return {
             ...dbLift,
             status: newStatus,
-            pickup_start_time: newStatus === 'WAITING_PICKUP' ? (dbLift.pickup_start_time ?? localLift.pickup_start_time) : null,
+            pickup_start_time: newStatus === 'WAITING_PICKUP' ? (validLocalStart ?? dbLift.pickup_start_time ?? Date.now()) : null,
             destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : null,
             source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : null,
             current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,

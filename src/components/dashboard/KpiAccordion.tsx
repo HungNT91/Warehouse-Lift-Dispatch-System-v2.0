@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, BarChart3, Activity, Clock, CheckCircle2, Cpu, Sparkles, AlertTriangle, Truck, Users } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { useLiftStore } from '../../stores/useLiftStore';
+import { safeParseTimestamp } from '../../utils/time';
 
 export const KpiAccordion: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
@@ -50,7 +51,9 @@ export const KpiAccordion: React.FC = () => {
     if (waitingLifts.length > 0) {
       const now = Date.now();
       const totalWaitMs = waitingLifts.reduce((sum, l) => {
-        return sum + Math.max(0, now - (l.pickup_start_time || now));
+        const start = l.pickup_start_time ? safeParseTimestamp(l.pickup_start_time) : now;
+        const diff = Math.max(0, now - start);
+        return sum + (diff < 2 * 3600 * 1000 ? diff : 0);
       }, 0);
       const avgMs = totalWaitMs / waitingLifts.length;
       const avgSecs = Math.floor(avgMs / 1000);
