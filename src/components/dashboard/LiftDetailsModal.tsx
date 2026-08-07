@@ -30,6 +30,7 @@ interface LiftDetailsModalProps {
   onEmergencyStop: (lift: Lift) => void;
   onResumeLift: (lift: Lift) => void;
   onToggleLock: (lift: Lift) => void;
+  onReportIssue?: () => void;
 }
 
 const statusThemes: Record<string, { bg: string; text: string; label: string }> = {
@@ -49,7 +50,8 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
   onClose,
   onEmergencyStop,
   onResumeLift,
-  onToggleLock
+  onToggleLock,
+  onReportIssue
 }) => {
   const { jobs } = useLiftStore();
   const { user } = useAuthStore();
@@ -119,7 +121,7 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
           {/* Main Specs Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Vị Trí Hiện Tại</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tầng Gửi</span>
               <span className="text-lg font-black text-slate-900 dark:text-white">Tầng {lift.current_floor}</span>
             </div>
 
@@ -138,7 +140,7 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
             </div>
 
             <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Người Vận Hành / Gửi</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Người Thực Hiện / Gửi</span>
               <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate block" title={operatorName}>
                 {operatorName}
               </span>
@@ -282,6 +284,18 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
         {/* Footer Controls */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
+            {onReportIssue && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onReportIssue();
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold rounded-xl uppercase flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <AlertOctagon className="w-4 h-4" /> BÁO SỰ CỐ
+              </button>
+            )}
+
             {isStoppedOrBlocked ? (
               <button
                 onClick={() => {

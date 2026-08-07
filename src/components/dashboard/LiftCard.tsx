@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { speakLiftArrival } from "../../utils/audio";
 import { LiftDetailsModal } from "./LiftDetailsModal";
+import { LiftIssueReportModal } from "./LiftIssueReportModal";
 
 interface LiftCardProps {
   lift: Lift;
@@ -38,6 +39,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
   const [showFloorSelector, setShowFloorSelector] = useState(false);
   const [waitingSeconds, setWaitingSeconds] = useState(0);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
 
   // Live timer for WAITING_PICKUP
   useEffect(() => {
@@ -389,6 +391,14 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         <div className="text-right flex flex-col items-end">
           <div className="flex items-center gap-1.5 mb-1">
             <button
+              onClick={() => setIsIssueModalOpen(true)}
+              className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/80 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+              title="Báo sự cố thang tời tới Đội Bảo Trì Kỹ Thuật"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-tight text-rose-700 dark:text-rose-300">CẢNH BÁO</span>
+            </button>
+            <button
               onClick={() => setIsDetailsOpen(true)}
               className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors cursor-pointer"
               title="Xem chi tiết & lịch sử tời"
@@ -658,6 +668,14 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         onEmergencyStop={handleEmergencyStop}
         onResumeLift={handleResumeLift}
         onToggleLock={handleToggleLock}
+        onReportIssue={() => setIsIssueModalOpen(true)}
+      />
+
+      {/* Lift Issue / Maintenance Report Modal */}
+      <LiftIssueReportModal
+        lift={lift}
+        isOpen={isIssueModalOpen}
+        onClose={() => setIsIssueModalOpen(false)}
       />
     </div>
   );
