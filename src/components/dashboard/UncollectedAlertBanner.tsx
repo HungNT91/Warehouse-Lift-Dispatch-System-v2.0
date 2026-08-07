@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLiftStore, safeParseTimestamp } from '../../stores/useLiftStore';
+import { useLiftStore } from '../../stores/useLiftStore';
+import { safeParseTimestamp } from '../../utils/time';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useTelegramStore } from '../../stores/useTelegramStore';
 import { speakUncollectedWarning } from '../../utils/audio';
