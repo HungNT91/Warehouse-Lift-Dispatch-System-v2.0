@@ -67,8 +67,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
   // Simulation for lift movement (30 seconds per floor)
   useEffect(() => {
     let timer: any;
-    if (lift.status === 'MOVING' && lift.destination_floor) {
-      const floorsToTravel = Math.abs(lift.destination_floor - lift.current_floor) || 1;
+    const effectiveDestFloor = lift.destination_floor || (lift.source_floor ? (lift.current_floor === lift.source_floor ? (lift.source_floor === 1 ? 2 : 1) : lift.current_floor) : null);
+
+    if (lift.status === 'MOVING' && (lift.destination_floor || effectiveDestFloor)) {
+      const destFloor = lift.destination_floor || effectiveDestFloor || lift.current_floor;
+      const floorsToTravel = Math.abs(destFloor - lift.current_floor) || 1;
       const totalSeconds = floorsToTravel * 30; // 30 seconds per floor
       const increment = 100 / totalSeconds;
 
@@ -78,8 +81,6 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         }, 1000);
       } else {
         // Arrived at destination
-        const destFloor = lift.destination_floor || lift.current_floor;
-
         // Chỉ phát âm thanh nếu:
         //   - User là Admin/Supervisor (không gắn tầng cụ thể), HOẶC
         //   - User là Worker được phân công đúng tầng đích của thang
@@ -129,9 +130,9 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
           updateLift(lift.id, {
             status: 'WAITING_PICKUP',
             current_floor: destFloor,
-            destination_floor: null,
+            destination_floor: destFloor,
             pickup_start_time: Date.now(),
-            progress: 0
+            progress: 100
           });
           if (lift.current_job_id) {
             updateJob(lift.current_job_id, { status: 'WAITING_PICKUP' });
@@ -141,7 +142,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
     }
 
     return () => clearTimeout(timer);
-  }, [lift.status, lift.progress, lift.destination_floor, lift.current_floor, lift.id, lift.current_job_id, updateLift, updateJob]);
+  }, [lift.status, lift.progress, lift.destination_floor, lift.current_floor, lift.id, lift.current_job_id, lift.source_floor, updateLift, updateJob]);
 
   const handleSendGoods = async (targetFloor: number) => {
     if (isWorker && !isAssignedFloor) {

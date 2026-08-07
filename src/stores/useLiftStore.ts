@@ -42,7 +42,17 @@ export const useLiftStore = create<LiftState>((set, get) => ({
   }),
 
   updateLift: (liftId, updates) => {
-    const prevLift = get().lifts.find(l => l.id === liftId);
+    // If updating ONLY progress, update local store state without issuing a DB write
+    if (Object.keys(updates).length === 1 && updates.progress !== undefined) {
+      set((state) => ({
+        lifts: state.lifts.map((lift) =>
+          lift.id === liftId ? { ...lift, progress: updates.progress! } : lift
+        )
+      }));
+      return;
+    }
+
+    const prevLift = get().lifts.find(l => l.id === liftId || l.lift_number === liftId);
 
     // Save to DB (lifts table)
     const statusMap: Record<string, number> = {
@@ -77,6 +87,8 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       if (updates.pickup_start_time) {
         dbUpdates.last_update = new Date(updates.pickup_start_time).toISOString();
       }
+    } else if (updates.status === 'MOVING') {
+      dbUpdates.last_update = new Date().toISOString();
     }
 
     db.lifts.update(liftId, dbUpdates).catch(console.error);
@@ -459,10 +471,20 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       };
 
       const mappedLifts: Lift[] = dbLifts.map(d => {
-        const activeJob = d.current_job
+        // Fallback robust active job matching
+        const activeJob = (d.current_job
           ? (dbJobs.find(j => j.id === d.current_job || j.job_no === d.current_job || (j as any).code === d.current_job) ||
             get().jobs.find(j => j.id === d.current_job || j.code === d.current_job))
-          : null;
+          : null) ||
+          dbJobs.find(j =>
+            (j.lift_id === d.id || j.lift_id === d.lift_code) &&
+            ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
+          ) ||
+          get().jobs.find(j =>
+            (j.lift_id === d.id || j.lift_id === d.lift_code) &&
+            ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
+          ) || null;
+
         const destFloor = activeJob ? parseFloor((activeJob as any).to_floor || (activeJob as any).target_floor) : null;
         const srcFloor = activeJob ? parseFloor((activeJob as any).from_floor || (activeJob as any).source_floor) : null;
         const liftStatus = (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE';
@@ -481,19 +503,33 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           }
         }
 
+        // Calculate progress dynamically based on time elapsed
+        let computedProgress = 0;
+        if (liftStatus === 'MOVING') {
+          const startTime = d.last_update ? new Date(d.last_update).getTime() : Date.now();
+          const travelDist = (destFloor && srcFloor) ? Math.abs(destFloor - srcFloor) : 1;
+          const totalSecs = travelDist * 30; // 30s per floor
+          const elapsedSecs = Math.max(0, (Date.now() - startTime) / 1000);
+          computedProgress = Math.min(99, Math.floor((elapsedSecs / totalSecs) * 100));
+        } else if (liftStatus === 'WAITING_PICKUP') {
+          computedProgress = 100;
+        }
+
+        const normalizedLiftId = (d.id && !d.id.includes('-')) ? d.id : (d.lift_code || d.id);
+
         return {
-          id: d.id,
+          id: normalizedLiftId,
           lift_number: d.lift_name || d.lift_code || d.id,
           current_floor: parseFloor(d.current_floor),
           destination_floor: destFloor,
           source_floor: srcFloor,
           status: liftStatus,
           operator: d.current_job ? userMap['u3'] || 'Phạm Lan Trang' : null,
-          current_job_id: d.current_job || null,
+          current_job_id: activeJob ? (activeJob.id || (activeJob as any).job_no) : (d.current_job || null),
           elapsed_time: null,
           pickup_start_time: pickupStartTime,
           last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
-          progress: d.status_id === 2 ? 65 : 0,
+          progress: computedProgress,
           created_at: new Date().toISOString(),
           updated_at: d.last_update || new Date().toISOString(),
         };
@@ -604,7 +640,11 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       // ─────────────────────────────────────────────────────────────────────
       const currentLifts = get().lifts;
       const mergedLifts: Lift[] = mappedLifts.map(dbLift => {
-        const localLift = currentLifts.find(l => l.id === dbLift.id);
+        const localLift = currentLifts.find(l =>
+          l.id === dbLift.id ||
+          l.lift_number === dbLift.lift_number ||
+          l.id === dbLift.lift_number
+        );
 
         if (!localLift) return dbLift;
 
@@ -613,14 +653,14 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           return {
             ...dbLift,
             status: newStatus,
-            progress: newStatus === 'MOVING' ? localLift.progress : 0,
+            progress: newStatus === 'MOVING' ? Math.max(localLift.progress, dbLift.progress) : 100,
             elapsed_time: localLift.elapsed_time,
             pickup_start_time: dbLift.pickup_start_time ?? localLift.pickup_start_time,
-            destination_floor: localLift.destination_floor ?? dbLift.destination_floor,
-            source_floor: localLift.source_floor ?? dbLift.source_floor,
-            current_job_id: localLift.current_job_id ?? dbLift.current_job_id,
-            operator: localLift.operator ?? dbLift.operator,
-            last_update: localLift.last_update ?? dbLift.last_update,
+            destination_floor: dbLift.destination_floor ?? localLift.destination_floor,
+            source_floor: dbLift.source_floor ?? localLift.source_floor,
+            current_job_id: dbLift.current_job_id ?? localLift.current_job_id,
+            operator: dbLift.operator ?? localLift.operator,
+            last_update: dbLift.last_update ?? localLift.last_update,
           };
         }
 
@@ -630,10 +670,10 @@ export const useLiftStore = create<LiftState>((set, get) => ({
             ...dbLift,
             status: newStatus,
             pickup_start_time: newStatus === 'WAITING_PICKUP' ? (dbLift.pickup_start_time ?? localLift.pickup_start_time) : null,
-            destination_floor: newStatus === 'WAITING_PICKUP' ? (localLift.destination_floor ?? dbLift.destination_floor) : null,
-            source_floor: newStatus === 'WAITING_PICKUP' ? (localLift.source_floor ?? dbLift.source_floor) : null,
-            current_job_id: newStatus === 'WAITING_PICKUP' ? (localLift.current_job_id ?? dbLift.current_job_id) : null,
-            operator: newStatus === 'WAITING_PICKUP' ? (localLift.operator ?? dbLift.operator) : null,
+            destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : null,
+            source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : null,
+            current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,
+            operator: newStatus === 'WAITING_PICKUP' ? (dbLift.operator ?? localLift.operator) : null,
           };
         }
 
