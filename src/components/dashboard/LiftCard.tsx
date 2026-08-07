@@ -3,7 +3,7 @@ import { Lift } from "../../types";
 import { cn } from "../../lib/utils";
 import { useAuthStore } from "../../stores/useAuthStore";
 import { Lock, Unlock, X, ArrowUp, ArrowDown, AlertCircle, AlertTriangle, Clock, RotateCcw, PackageCheck, Eye, Play, AlertOctagon } from "lucide-react";
-import { useLiftStore } from "../../stores/useLiftStore";
+import { useLiftStore, safeParseTimestamp } from "../../stores/useLiftStore";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { speakLiftArrival } from "../../utils/audio";
@@ -43,9 +43,14 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
     let interval: any;
     if (lift.status === 'WAITING_PICKUP') {
       const rawStart = lift.pickup_start_time;
-      const startTime = typeof rawStart === 'number'
+      let startTime = typeof rawStart === 'number' && rawStart > 0
         ? rawStart
-        : (rawStart ? new Date(rawStart).getTime() : Date.now());
+        : (rawStart ? safeParseTimestamp(rawStart) : Date.now());
+
+      if (Date.now() - startTime < 0 || Date.now() - startTime > 2 * 3600 * 1000) {
+        startTime = Date.now();
+      }
+
       const calcSecs = () => Math.max(0, Math.floor((Date.now() - startTime) / 1000));
       setWaitingSeconds(calcSecs());
 

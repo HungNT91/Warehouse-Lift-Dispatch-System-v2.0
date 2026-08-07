@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLiftStore } from '../../stores/useLiftStore';
+import { useLiftStore, safeParseTimestamp } from '../../stores/useLiftStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useTelegramStore } from '../../stores/useTelegramStore';
 import { speakUncollectedWarning } from '../../utils/audio';
@@ -31,9 +31,14 @@ export const UncollectedAlertBanner: React.FC = () => {
 
       waitingLifts.forEach((lift) => {
         const rawStart = lift.pickup_start_time;
-        const start = typeof rawStart === 'number'
+        let start = typeof rawStart === 'number' && rawStart > 0
           ? rawStart
-          : (rawStart ? new Date(rawStart).getTime() : now);
+          : (rawStart ? safeParseTimestamp(rawStart) : now);
+
+        if (now - start < 0 || now - start > 2 * 3600 * 1000) {
+          start = now;
+        }
+
         const elapsedSecs = Math.max(0, Math.floor((now - start) / 1000));
         newTimers[lift.id] = elapsedSecs;
 
