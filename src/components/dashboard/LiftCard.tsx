@@ -159,9 +159,10 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       toast.error(`Bạn được phân công ở Tầng ${assignment?.assigned_floor}. Không thể gửi hàng từ Tầng ${lift.current_floor}!`);
       return;
     }
-    const isAllowed = !lift.allowed_floors || lift.allowed_floors.includes(targetFloor);
-    if (!isAllowed) {
-      toast.error(`🚫 Tầng ${targetFloor} đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này! Không thể gửi hàng đến đây.`);
+    const isAllowedSource = !lift.allowed_floors || lift.allowed_floors.includes(lift.current_floor);
+    const isAllowedTarget = !lift.allowed_floors || lift.allowed_floors.includes(targetFloor);
+    if (!isAllowedSource || !isAllowedTarget) {
+      toast.error(`🚫 Tầng hiện tại (${lift.current_floor}) hoặc tầng đích (${targetFloor}) đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này!`);;
       return;
     }
     setShowFloorSelector(false);
@@ -600,42 +601,58 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
           )
         ) : lift.status === 'AVAILABLE' ? (
           <>
-            <button
-              onClick={() => {
-                if (!isAssignedLift) {
-                  toast.error("Bạn không thuộc phân công tời này!");
-                  return;
-                }
-                if (!isAssignedFloor) {
-                  toast.error(`Tời đang ở Tầng ${lift.current_floor}. Bạn được phân công ở Tầng ${assignment?.assigned_floor}, chỉ được gửi hàng khi tời ở tầng của bạn!`);
-                  return;
-                }
-                setShowFloorSelector(true);
-              }}
-              disabled={!isAssignedLift || !isAssignedFloor}
-              className={cn(
-                "py-2 text-[11px] font-bold rounded-lg uppercase transition-colors cursor-pointer",
-                (!isAssignedLift || !isAssignedFloor)
-                  ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-800"
-                  : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
-              )}
-              title={!isAssignedFloor ? `Tời ở Tầng ${lift.current_floor} (Bạn ở Tầng ${assignment?.assigned_floor})` : "Gửi hàng đến tầng khác"}
-            >
-              GỬI HÀNG
-            </button>
-            <button
-              onClick={handleCallLift}
-              disabled={!isAssignedLift || lift.current_floor === assignment?.assigned_floor}
-              className={cn(
-                "py-2 text-[11px] font-bold rounded-lg uppercase transition-colors cursor-pointer flex items-center justify-center gap-1",
-                (!isAssignedLift || lift.current_floor === assignment?.assigned_floor)
-                  ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed"
-                  : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
-              )}
-              title={`Gọi tời về Tầng ${assignment?.assigned_floor || 1}`}
-            >
-              {lift.current_floor === assignment?.assigned_floor ? "Ở TẦNG NÀY" : `GỌI VỀ TẦNG ${assignment?.assigned_floor || 1}`}
-            </button>
+            {(() => {
+              const isCurrentAllowed = !lift.allowed_floors || lift.allowed_floors.includes(lift.current_floor);
+              const targetFloor = assignment?.assigned_floor;
+              const isTargetAllowed = !lift.allowed_floors || (targetFloor ? lift.allowed_floors.includes(targetFloor) : true);
+              const isSendDisabled = !isAssignedLift || !isAssignedFloor || !isCurrentAllowed;
+              const isCallDisabled = !isAssignedLift || lift.current_floor === targetFloor || !isCurrentAllowed || !isTargetAllowed;
+
+              return (
+                <>
+                  <button
+                    onClick={() => {
+                      if (!isAssignedLift) {
+                        toast.error("Bạn không thuộc phân công tời này!");
+                        return;
+                      }
+                      if (!isAssignedFloor) {
+                        toast.error(`Tời đang ở Tầng ${lift.current_floor}. Bạn được phân công ở Tầng ${assignment?.assigned_floor}, chỉ được gửi hàng khi tời ở tầng của bạn!`);
+                        return;
+                      }
+                      if (!isCurrentAllowed) {
+                        toast.error(`🚫 Tầng hiện tại (${lift.current_floor}) đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này!`);
+                        return;
+                      }
+                      setShowFloorSelector(true);
+                    }}
+                    disabled={isSendDisabled}
+                    className={cn(
+                      "py-2 text-[11px] font-bold rounded-lg uppercase transition-colors cursor-pointer",
+                      isSendDisabled
+                        ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-800"
+                        : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+                    )}
+                    title={!isAssignedFloor ? `Tời ở Tầng ${lift.current_floor} (Bạn ở Tầng ${assignment?.assigned_floor})` : (!isCurrentAllowed ? `Tầng ${lift.current_floor} đã bị hạn chế` : "Gửi hàng đến tầng khác")}
+                  >
+                    GỬI HÀNG
+                  </button>
+                  <button
+                    onClick={handleCallLift}
+                    disabled={isCallDisabled}
+                    className={cn(
+                      "py-2 text-[11px] font-bold rounded-lg uppercase transition-colors cursor-pointer flex items-center justify-center gap-1",
+                      isCallDisabled
+                        ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed"
+                        : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
+                    )}
+                    title={!isCurrentAllowed || !isTargetAllowed ? "Tầng hiện tại hoặc tầng gọi về đã bị hạn chế bởi Quản lý" : `Gọi tời về Tầng ${targetFloor || 1}`}
+                  >
+                    {lift.current_floor === targetFloor ? "Ở TẦNG NÀY" : `GỌI VỀ TẦNG ${targetFloor || 1}`}
+                  </button>
+                </>
+              );
+            })()}
           </>
         ) : lift.status === 'RESERVED' ? (
           <button className="col-span-2 py-2 bg-blue-600 dark:bg-blue-500 text-white text-[11px] font-bold rounded-lg uppercase transition-colors">DÙNG TỜI (ĐÃ ĐẶT)</button>
