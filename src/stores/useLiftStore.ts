@@ -684,16 +684,15 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
         if (localLift.status === 'WAITING_PICKUP') {
           // Check if there is still an active job for this lift with WAITING_PICKUP
-          const hasWaitingJob = mappedJobs.some(j => isSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP') ||
-            dbJobs.some(j => isSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP');
+          const hasWaitingJob = mappedJobs.some(j => isSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP');
 
           const newStatus = (dbLift.status === 'AVAILABLE' && !hasWaitingJob) ? 'AVAILABLE' : 'WAITING_PICKUP';
           return {
             ...dbLift,
             status: newStatus,
             pickup_start_time: newStatus === 'WAITING_PICKUP' ? (dbLift.pickup_start_time ?? localLift.pickup_start_time) : null,
-            destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : localLift.destination_floor,
-            source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : localLift.source_floor,
+            destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : null,
+            source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : null,
             current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,
             operator: newStatus === 'WAITING_PICKUP' ? (dbLift.operator ?? localLift.operator) : null,
           };
@@ -704,7 +703,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
       set({
         lifts: mergedLifts.length > 0 ? mergedLifts : mockLifts,
-        jobs: mappedJobs.length > 0 ? mappedJobs : mockJobs,
+        jobs: mappedJobs,
         notifications: mappedNotifs.length > 0 ? mappedNotifs : mockNotifications,
         activities: mappedActivities.length > 0 ? mappedActivities : mockActivities
       });

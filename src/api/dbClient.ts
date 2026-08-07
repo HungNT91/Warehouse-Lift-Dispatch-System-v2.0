@@ -542,11 +542,34 @@ export const db = {
       };
       if (isSupabaseConfigured()) {
         try {
-          const { data, error } = await getSupabase().from('daily_assignments').insert([newAssignment]).select().single();
+          const { data, error } = await getSupabase()
+            .from('daily_assignments')
+            .upsert(newAssignment, { onConflict: 'work_date, user_id' })
+            .select()
+            .single();
+
           if (error) {
             console.warn('Supabase error creating daily_assignment:', error.message);
+            // Fallback: try update if upsert failed due to constraint name difference
+            const { data: updateData } = await getSupabase()
+              .from('daily_assignments')
+              .update({ floor_id: newAssignment.floor_id, lift_id: newAssignment.lift_id, shift: newAssignment.shift })
+              .eq('work_date', newAssignment.work_date)
+              .eq('user_id', newAssignment.user_id)
+              .select()
+              .maybeSingle();
+
+            if (updateData) {
+              const idx = mockDbData.dailyAssignments.findIndex(a => a.user_id === newAssignment.user_id && a.work_date === newAssignment.work_date);
+              if (idx !== -1) mockDbData.dailyAssignments[idx] = updateData;
+              else mockDbData.dailyAssignments.push(updateData);
+              saveMockData();
+              return updateData;
+            }
           } else if (data) {
-            mockDbData.dailyAssignments.push(data);
+            const idx = mockDbData.dailyAssignments.findIndex(a => a.user_id === newAssignment.user_id && a.work_date === newAssignment.work_date);
+            if (idx !== -1) mockDbData.dailyAssignments[idx] = data;
+            else mockDbData.dailyAssignments.push(data);
             saveMockData();
             return data;
           }
@@ -554,7 +577,12 @@ export const db = {
           console.warn('Supabase exception creating daily_assignment:', e);
         }
       }
-      mockDbData.dailyAssignments.push(newAssignment);
+      const existingIdx = mockDbData.dailyAssignments.findIndex(a => a.user_id === newAssignment.user_id && a.work_date === newAssignment.work_date);
+      if (existingIdx !== -1) {
+        mockDbData.dailyAssignments[existingIdx] = { ...mockDbData.dailyAssignments[existingIdx], ...newAssignment };
+      } else {
+        mockDbData.dailyAssignments.push(newAssignment);
+      }
       saveMockData();
       return newAssignment;
     }
