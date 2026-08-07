@@ -455,6 +455,18 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         floorMap[f.id] = f.floor_no;
       });
 
+      const isSameLift = (val1: any, val2: any): boolean => {
+        if (!val1 || !val2) return false;
+        if (val1 === val2) return true;
+        const s1 = String(val1).toLowerCase().trim();
+        const s2 = String(val2).toLowerCase().trim();
+        if (s1 === s2) return true;
+        const num1 = s1.replace(/[^0-9]/g, '');
+        const num2 = s2.replace(/[^0-9]/g, '');
+        if (num1 && num2 && num1 === num2 && num1.length <= 2) return true;
+        return false;
+      };
+
       // Map lifts
       const parseFloor = (floor: string | number | null | undefined): number => {
         if (typeof floor === 'number') return floor;
@@ -477,17 +489,22 @@ export const useLiftStore = create<LiftState>((set, get) => ({
             get().jobs.find(j => j.id === d.current_job || j.code === d.current_job))
           : null) ||
           dbJobs.find(j =>
-            (j.lift_id === d.id || j.lift_id === d.lift_code) &&
+            (isSameLift(j.lift_id, d.id) || isSameLift(j.lift_id, d.lift_code) || isSameLift(j.lift_id, d.lift_name)) &&
             ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
           ) ||
           get().jobs.find(j =>
-            (j.lift_id === d.id || j.lift_id === d.lift_code) &&
+            (isSameLift(j.lift_id, d.id) || isSameLift(j.lift_id, d.lift_code) || isSameLift(j.lift_id, d.lift_name)) &&
             ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
           ) || null;
 
         const destFloor = activeJob ? parseFloor((activeJob as any).to_floor || (activeJob as any).target_floor) : null;
         const srcFloor = activeJob ? parseFloor((activeJob as any).from_floor || (activeJob as any).source_floor) : null;
-        const liftStatus = (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE';
+        let liftStatus = (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE';
+
+        // Direct status sync with active job status if active job exists
+        if (activeJob && ['MOVING', 'WAITING_PICKUP'].includes((activeJob as any).status)) {
+          liftStatus = (activeJob as any).status;
+        }
 
         let pickupStartTime: number | null = null;
         if (liftStatus === 'WAITING_PICKUP') {
@@ -643,7 +660,8 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         const localLift = currentLifts.find(l =>
           l.id === dbLift.id ||
           l.lift_number === dbLift.lift_number ||
-          l.id === dbLift.lift_number
+          l.id === dbLift.lift_number ||
+          isSameLift(l.id, dbLift.id)
         );
 
         if (!localLift) return dbLift;
@@ -665,13 +683,17 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         }
 
         if (localLift.status === 'WAITING_PICKUP') {
-          const newStatus = dbLift.status === 'AVAILABLE' ? 'AVAILABLE' : 'WAITING_PICKUP';
+          // Check if there is still an active job for this lift with WAITING_PICKUP
+          const hasWaitingJob = mappedJobs.some(j => isSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP') ||
+            dbJobs.some(j => isSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP');
+
+          const newStatus = (dbLift.status === 'AVAILABLE' && !hasWaitingJob) ? 'AVAILABLE' : 'WAITING_PICKUP';
           return {
             ...dbLift,
             status: newStatus,
             pickup_start_time: newStatus === 'WAITING_PICKUP' ? (dbLift.pickup_start_time ?? localLift.pickup_start_time) : null,
-            destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : null,
-            source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : null,
+            destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : localLift.destination_floor,
+            source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : localLift.source_floor,
             current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,
             operator: newStatus === 'WAITING_PICKUP' ? (dbLift.operator ?? localLift.operator) : null,
           };

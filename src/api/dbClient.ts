@@ -398,17 +398,18 @@ export const db = {
     },
     async update(id: string, updates: Partial<DbLift>): Promise<boolean> {
       const realLiftId = resolveLiftUuid(id);
-      const cleanUpdates = { ...updates };
+      const cleanUpdates: any = { ...updates };
       if (cleanUpdates.current_floor) cleanUpdates.current_floor = resolveFloorUuid(cleanUpdates.current_floor);
       if (cleanUpdates.current_job) {
-        if (isUuid(cleanUpdates.current_job)) {
-          cleanUpdates.current_job = String(cleanUpdates.current_job);
-        } else {
-          const matchedJob = mockDbData.transportJobs.find(j => j.id === cleanUpdates.current_job || j.job_no === cleanUpdates.current_job);
-          if (matchedJob) {
+        if (!isUuid(cleanUpdates.current_job)) {
+          const strJob = String(cleanUpdates.current_job);
+          const matchedJob = mockDbData.transportJobs.find(j => j.id === strJob || j.job_no === strJob) ||
+            cachedJobs.find(j => j.id === strJob || j.job_no === strJob);
+          if (matchedJob && isUuid(matchedJob.id)) {
             cleanUpdates.current_job = matchedJob.id;
           } else {
-            cleanUpdates.current_job = String(cleanUpdates.current_job);
+            // Remove non-UUID current_job field before calling Supabase to prevent Postgres 22P02 invalid UUID error
+            delete cleanUpdates.current_job;
           }
         }
       }
@@ -416,13 +417,15 @@ export const db = {
       if (isSupabaseConfigured()) {
         const { error } = await getSupabase().from('lifts').update({ ...cleanUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);
         if (!error) {
-          const idx = mockDbData.lifts.findIndex(l => l.id === id || l.id === realLiftId);
+          const idx = mockDbData.lifts.findIndex(l => l.id === id || l.id === realLiftId || l.lift_code === id);
           if (idx !== -1) mockDbData.lifts[idx] = { ...mockDbData.lifts[idx], ...cleanUpdates, last_update: new Date().toISOString() };
           saveMockData();
           return true;
+        } else {
+          console.warn('Supabase error updating lift:', error.message);
         }
       }
-      const idx = mockDbData.lifts.findIndex(l => l.id === id || l.id === realLiftId);
+      const idx = mockDbData.lifts.findIndex(l => l.id === id || l.id === realLiftId || l.lift_code === id);
       if (idx !== -1) {
         mockDbData.lifts[idx] = {
           ...mockDbData.lifts[idx],
@@ -669,7 +672,13 @@ export const db = {
 
       if (isSupabaseConfigured()) {
         try {
-          const { error } = await getSupabase().from('transport_jobs').update(cleanUpdates).eq('id', id);
+          let query = getSupabase().from('transport_jobs').update(cleanUpdates);
+          if (isUuid(id)) {
+            query = query.eq('id', id);
+          } else {
+            query = query.eq('job_no', id);
+          }
+          const { error } = await query;
           if (error) {
             console.warn('Supabase error updating transport_job:', error.message);
           }
