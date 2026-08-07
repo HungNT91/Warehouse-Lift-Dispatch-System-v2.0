@@ -12,6 +12,7 @@ export const mockLifts: Lift[] = [
     elapsed_time: null,
     last_update: 'Vừa xong',
     progress: 0,
+    allowed_floors: [1, 2, 3, 4],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -26,6 +27,7 @@ export const mockLifts: Lift[] = [
     elapsed_time: '01:12',
     last_update: '10s trước',
     progress: 65,
+    allowed_floors: [1, 2, 3, 4],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -40,6 +42,7 @@ export const mockLifts: Lift[] = [
     elapsed_time: null,
     last_update: 'Vừa xong',
     progress: 0,
+    allowed_floors: [1, 2, 3, 4],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -54,6 +57,7 @@ export const mockLifts: Lift[] = [
     elapsed_time: '00:45',
     last_update: 'Vừa xong',
     progress: 20,
+    allowed_floors: [1, 2, 3, 4],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -68,6 +72,7 @@ export const mockLifts: Lift[] = [
     elapsed_time: null,
     last_update: '1h trước',
     progress: 0,
+    allowed_floors: [1, 2, 3, 4],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -82,6 +87,7 @@ export const mockLifts: Lift[] = [
     elapsed_time: '02:15',
     last_update: '30s trước',
     progress: 85,
+    allowed_floors: [1, 2, 3, 4],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },

@@ -75,6 +75,9 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     if (updates.current_job_id !== undefined) {
       dbUpdates.current_job = updates.current_job_id;
     }
+    if (updates.allowed_floors !== undefined) {
+      dbUpdates.allowed_floors = updates.allowed_floors;
+    }
 
     // Direct synchronization for uncollected timer (pickup_start_time)
     if (updates.status === 'WAITING_PICKUP' && !updates.pickup_start_time) {
@@ -550,6 +553,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           pickup_start_time: pickupStartTime,
           last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
           progress: computedProgress,
+          allowed_floors: d.allowed_floors || [1, 2, 3, 4],
           created_at: new Date().toISOString(),
           updated_at: d.last_update || new Date().toISOString(),
         };
@@ -669,6 +673,8 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
         if (!localLift) return dbLift;
 
+        const resolvedAllowedFloors = localLift.allowed_floors ?? dbLift.allowed_floors ?? [1, 2, 3, 4];
+
         if (localLift.status === 'MOVING') {
           const newStatus = dbLift.status === 'WAITING_PICKUP' ? 'WAITING_PICKUP' : 'MOVING';
           const validLocalProg = typeof localLift.progress === 'number' && !isNaN(localLift.progress) ? localLift.progress : 0;
@@ -683,6 +689,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
             current_job_id: dbLift.current_job_id ?? localLift.current_job_id,
             operator: dbLift.operator ?? localLift.operator,
             last_update: dbLift.last_update ?? localLift.last_update,
+            allowed_floors: resolvedAllowedFloors,
           };
         }
 
@@ -702,10 +709,14 @@ export const useLiftStore = create<LiftState>((set, get) => ({
             source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : null,
             current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,
             operator: newStatus === 'WAITING_PICKUP' ? (dbLift.operator ?? localLift.operator) : null,
+            allowed_floors: resolvedAllowedFloors,
           };
         }
 
-        return dbLift;
+        return {
+          ...dbLift,
+          allowed_floors: resolvedAllowedFloors,
+        };
       });
 
       set({

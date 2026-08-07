@@ -55,11 +55,11 @@ export interface DbLift {
   has_cargo?: boolean | null; // bool
   current_job?: string | null; // uuid
   last_update?: string | null; // timestamp
-  pickup_start_time?: number | string | null; // timestamp in ms or ISO string
   note?: string | null; // text
   current_assignment_id?: string | null; // uuid
   lock_type?: string | null; // varchar
   reservation_id?: string | null; // uuid
+  allowed_floors?: number[]; // jsonb / array
 }
 
 export interface DbLiftCommand {
