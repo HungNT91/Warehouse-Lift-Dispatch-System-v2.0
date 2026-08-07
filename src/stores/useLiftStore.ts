@@ -525,11 +525,12 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         // Calculate progress dynamically based on time elapsed
         let computedProgress = 0;
         if (liftStatus === 'MOVING') {
-          const startTime = d.last_update ? new Date(d.last_update).getTime() : Date.now();
+          const startTime = safeParseTimestamp(d.last_update);
           const travelDist = (destFloor && srcFloor) ? Math.abs(destFloor - srcFloor) : 1;
           const totalSecs = travelDist * 30; // 30s per floor
           const elapsedSecs = Math.max(0, (Date.now() - startTime) / 1000);
-          computedProgress = Math.min(99, Math.floor((elapsedSecs / totalSecs) * 100));
+          const calcProg = Math.floor((elapsedSecs / totalSecs) * 100);
+          computedProgress = isNaN(calcProg) ? 0 : Math.min(99, Math.max(0, calcProg));
         } else if (liftStatus === 'WAITING_PICKUP') {
           computedProgress = 100;
         }
@@ -670,10 +671,11 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
         if (localLift.status === 'MOVING') {
           const newStatus = dbLift.status === 'WAITING_PICKUP' ? 'WAITING_PICKUP' : 'MOVING';
+          const validLocalProg = typeof localLift.progress === 'number' && !isNaN(localLift.progress) ? localLift.progress : 0;
           return {
             ...dbLift,
             status: newStatus,
-            progress: newStatus === 'MOVING' ? Math.max(localLift.progress, dbLift.progress) : 100,
+            progress: newStatus === 'MOVING' ? validLocalProg : 100,
             elapsed_time: localLift.elapsed_time,
             pickup_start_time: dbLift.pickup_start_time ?? localLift.pickup_start_time,
             destination_floor: dbLift.destination_floor ?? localLift.destination_floor,

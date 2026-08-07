@@ -18,3 +18,15 @@ export const safeParseTimestamp = (val: any): number => {
     }
     return Date.now();
 };
+
+export const isSameLift = (val1: any, val2: any): boolean => {
+    if (!val1 || !val2) return false;
+    if (val1 === val2) return true;
+    const s1 = String(val1).toLowerCase().trim();
+    const s2 = String(val2).toLowerCase().trim();
+    if (s1 === s2) return true;
+    const num1 = s1.replace(/[^0-9]/g, '');
+    const num2 = s2.replace(/[^0-9]/g, '');
+    if (num1 && num2 && num1 === num2 && num1.length <= 2) return true;
+    return false;
+};

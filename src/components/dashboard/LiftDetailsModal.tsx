@@ -2,6 +2,7 @@ import React from 'react';
 import { Lift, Job } from '../../types';
 import { useLiftStore } from '../../stores/useLiftStore';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { isSameLift } from '../../utils/time';
 import {
   X,
   Play,
@@ -56,18 +57,25 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Find jobs related to this lift
+  // Find jobs related to this lift using robust isSameLift matching
   const liftJobs = jobs
-    .filter((j) => j.lift_id === lift.id)
+    .filter((j) => isSameLift(j.lift_id, lift.id) || isSameLift(j.lift_id, lift.lift_number))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  const activeJob = liftJobs.find(j => j.id === lift.current_job_id || j.code === lift.current_job_id || j.status === 'CREATED' || j.status === 'WAITING_PICKUP');
+  // Active job currently running or waiting
+  const activeJob = liftJobs.find(j =>
+    (lift.current_job_id && (j.id === lift.current_job_id || j.code === lift.current_job_id)) ||
+    ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
+  ) || (lift.status !== 'AVAILABLE' && liftJobs.length > 0 ? liftJobs[0] : null);
 
-  // Derive real operator name from current active job sender, lift operator, or last job creator
+  // Derive real destination floor from lift state or active job
+  const effectiveDestFloor = lift.destination_floor || activeJob?.target_floor || (activeJob as any)?.to_floor || null;
+
+  // Derive real operator name from active job creator, lift operator, or last job creator
   const operatorName = activeJob?.creator_name
     || lift.operator
     || (liftJobs.length > 0 ? liftJobs[0].creator_name : null)
-    || (lift.status === 'AVAILABLE' ? 'Rảnh' : 'Nhân viên kho');
+    || (lift.status === 'AVAILABLE' ? 'Chưa có' : 'Nhân viên kho');
 
   const theme = statusThemes[lift.status] || statusThemes['AVAILABLE'];
   const isStoppedOrBlocked = ['STOPPED', 'MAINTENANCE', 'LOCKED', 'OFFLINE'].includes(lift.status);
@@ -118,7 +126,7 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
             <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tầng Đích</span>
               <span className="text-lg font-black text-blue-600 dark:text-blue-400">
-                {lift.destination_floor ? `Tầng ${lift.destination_floor}` : 'Không có'}
+                {effectiveDestFloor ? `Tầng ${effectiveDestFloor}` : 'Không có'}
               </span>
             </div>
 

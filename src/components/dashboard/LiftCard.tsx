@@ -81,9 +81,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       const totalSeconds = floorsToTravel * 30; // 30 seconds per floor
       const increment = 100 / totalSeconds;
 
-      if (lift.progress < 100) {
+      const currentProg = (typeof lift.progress === 'number' && !isNaN(lift.progress)) ? lift.progress : 0;
+
+      if (currentProg < 100) {
         timer = setTimeout(() => {
-          updateLift(lift.id, { progress: Math.min(lift.progress + increment, 100) });
+          updateLift(lift.id, { progress: Math.min(currentProg + increment, 100) });
         }, 1000);
       } else {
         // Arrived at destination
