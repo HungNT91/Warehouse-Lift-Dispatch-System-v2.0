@@ -10,22 +10,27 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Hardcoded Telegram & Emergency Lockdown Configuration (Works out-of-the-box in Production without .env)
+const DEFAULT_TELEGRAM_BOT_TOKEN = "8893527039:AAG9dkuaijXHURBKRkFKH5Fb89da1B_Jgx8";
+const DEFAULT_MASTER_CHAT_ID = "584920194";
+const DEFAULT_BACKUP_CHAT_ID = "998234102";
+
 // In-memory System Lockdown State (persisted or synchronized across sessions)
 let systemState = {
     isLocked: false,
     lockedBy: null as string | null,
     lockedAt: null as string | null,
-    masterChatId: process.env.TELEGRAM_MASTER_CHAT_ID || "1926967637", // Default Master ID placeholder
-    backupChatId: process.env.TELEGRAM_BACKUP_CHAT_ID || "6732311141", // Default Backup ID placeholder
-    botToken: process.env.TELEGRAM_BOT_TOKEN || "8893527039:AAG9dkuaijXHURBKRkFKH5Fb89da1B_Jgx8",
+    masterChatId: process.env.TELEGRAM_MASTER_CHAT_ID || DEFAULT_MASTER_CHAT_ID,
+    backupChatId: process.env.TELEGRAM_BACKUP_CHAT_ID || DEFAULT_BACKUP_CHAT_ID,
+    botToken: process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TELEGRAM_BOT_TOKEN,
     lastOffset: 0,
 };
 
 // Helper function to send message back via Telegram Bot API
 async function sendTelegramReply(chatId: string, text: string) {
     try {
-        const token = systemState.botToken;
-        if (!token || token.includes("placeholder")) return;
+        const token = systemState.botToken || DEFAULT_TELEGRAM_BOT_TOKEN;
+        if (!token) return;
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -42,19 +47,46 @@ async function sendTelegramReply(chatId: string, text: string) {
 
 // Process incoming Telegram command
 async function processTelegramCommand(chatId: string, text: string, senderName: string) {
+    if (!text) return false;
     const cleanText = text.trim().toLowerCase();
-    const isMaster = chatId === systemState.masterChatId;
-    const isBackup = chatId === systemState.backupChatId;
+    const trimmedChatId = String(chatId).trim();
+
+    // Hardcoded Authorized Chat IDs (Master: 584920194, Backup: 998234102 + systemState values)
+    const authorizedIds = new Set([
+        DEFAULT_MASTER_CHAT_ID,
+        DEFAULT_BACKUP_CHAT_ID,
+        "584920194",
+        "998234102",
+        String(systemState.masterChatId).trim(),
+        String(systemState.backupChatId).trim()
+    ].filter(Boolean));
+
+    const isMaster = trimmedChatId === DEFAULT_MASTER_CHAT_ID || trimmedChatId === String(systemState.masterChatId).trim();
+    const isBackup = trimmedChatId === DEFAULT_BACKUP_CHAT_ID || trimmedChatId === String(systemState.backupChatId).trim();
 
     // Verify authorization: Must be Master or Backup ID
-    if (!isMaster && !isBackup) {
+    if (!authorizedIds.has(trimmedChatId)) {
         console.warn(`Unauthorized Telegram command attempt from Chat ID: ${chatId} (${senderName})`);
         return false;
     }
 
-    const roleLabel = isMaster ? "Master Admin" : "Backup Admin";
+    const roleLabel = isMaster ? "Master Admin" : isBackup ? "Backup Admin" : "Authorized Admin";
 
-    if (cleanText === "đóng" || cleanText === "khoa" || cleanText === "/lockdown" || cleanText === "lock") {
+    // Lock commands check
+    const isLockCommand = [
+        "đóng", "dong", "khóa", "khoa", "khoá",
+        "mở khóa khẩn cấp", "khóa khẩn cấp", "khoa khan cap",
+        "/lockdown", "/lock", "lockdown", "lock"
+    ].some(cmd => cleanText === cmd || cleanText.startsWith(cmd + " "));
+
+    // Unlock commands check
+    const isUnlockCommand = [
+        "mở", "mo", "mở khóa", "mo khoa", "mokhoa",
+        "khôi phục", "khoiphuc", "khoi phuc",
+        "/restore", "/unlock", "restore", "unlock"
+    ].some(cmd => cleanText === cmd || cleanText.startsWith(cmd + " "));
+
+    if (isLockCommand) {
         systemState.isLocked = true;
         systemState.lockedBy = `${senderName} (${roleLabel} - ID: ${chatId})`;
         systemState.lockedAt = new Date().toISOString();
@@ -62,12 +94,12 @@ async function processTelegramCommand(chatId: string, text: string, senderName: 
         console.log(`🚨 GLOBAL LOCKDOWN ACTIVATED via Telegram by ${systemState.lockedBy}`);
         await sendTelegramReply(
             chatId,
-            `🚨 <b>HỆ THỐNG ĐÃ BỊ KHÓA KHẨN CẤP (GLOBAL LOCKDOWN)</b>\n\n- Người thực hiện: ${senderName} [${roleLabel}]\n- Thời gian: ${new Date().toLocaleString()}\n- Trạng thái: Toàn bộ thao tác trên ứng dụng đã bị đóng băng trên mọi màn hình người dùng.`
+            `🚨 <b>HỆ THỐNG ĐÃ BỊ KHÓA KHẨN CẤP (GLOBAL LOCKDOWN)</b>\n\n- Người thực hiện: ${senderName} [${roleLabel}]\n- Thời gian: ${new Date().toLocaleString('vi-VN')}\n- Trạng thái: Toàn bộ thao tác trên ứng dụng đã bị đóng băng trên mọi màn hình người dùng.`
         );
         return true;
     }
 
-    if (cleanText === "mở" || cleanText === "mokhoa" || cleanText === "/restore" || cleanText === "unlock") {
+    if (isUnlockCommand) {
         systemState.isLocked = false;
         systemState.lockedBy = null;
         systemState.lockedAt = null;
@@ -75,7 +107,7 @@ async function processTelegramCommand(chatId: string, text: string, senderName: 
         console.log(`✅ SYSTEM RESTORED via Telegram by ${senderName} (${roleLabel})`);
         await sendTelegramReply(
             chatId,
-            `✅ <b>HỆ THỐNG ĐÃ ĐƯỢC MỞ KHÓA & KHÔI PHỤC</b>\n\n- Người thực hiện: ${senderName} [${roleLabel}]\n- Thời gian: ${new Date().toLocaleString()}\n- Trạng thái: Hoạt động bình thường trở lại.`
+            `✅ <b>HỆ THỐNG ĐÃ ĐƯỢC MỞ KHÓA & KHÔI PHỤC</b>\n\n- Người thực hiện: ${senderName} [${roleLabel}]\n- Thời gian: ${new Date().toLocaleString('vi-VN')}\n- Trạng thái: Hoạt động bình thường trở lại.`
         );
         return true;
     }
@@ -85,8 +117,8 @@ async function processTelegramCommand(chatId: string, text: string, senderName: 
 
 // Background Telegram Polling Loop (Long polling getUpdates)
 async function pollTelegramUpdates() {
-    const token = systemState.botToken;
-    if (!token || token.includes("placeholder")) return;
+    const token = systemState.botToken || DEFAULT_TELEGRAM_BOT_TOKEN;
+    if (!token) return;
 
     try {
         const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=${systemState.lastOffset}&timeout=5`);
