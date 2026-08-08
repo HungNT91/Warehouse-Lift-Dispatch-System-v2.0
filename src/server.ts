@@ -22,8 +22,8 @@ app.use((req, res, next) => {
 
 // Hardcoded Telegram & Emergency Lockdown Configuration (Works out-of-the-box in Production without .env)
 const DEFAULT_TELEGRAM_BOT_TOKEN = "8893527039:AAG9dkuaijXHURBKRkFKH5Fb89da1B_Jgx8";
-const DEFAULT_MASTER_CHAT_ID = "584920194";
-const DEFAULT_BACKUP_CHAT_ID = "998234102";
+const DEFAULT_MASTER_CHAT_ID = "1926967637";
+const DEFAULT_BACKUP_CHAT_ID = "6732311141";
 
 // In-memory System Lockdown State (persisted or synchronized across sessions)
 let systemState = {
