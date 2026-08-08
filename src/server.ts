@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -9,6 +8,17 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// CORS Headers for Vercel Serverless & Local
+app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 // Hardcoded Telegram & Emergency Lockdown Configuration (Works out-of-the-box in Production without .env)
 const DEFAULT_TELEGRAM_BOT_TOKEN = "8893527039:AAG9dkuaijXHURBKRkFKH5Fb89da1B_Jgx8";
@@ -142,8 +152,10 @@ async function pollTelegramUpdates() {
     }
 }
 
-// Run polling every 6 seconds
-setInterval(pollTelegramUpdates, 6000);
+// Run polling every 6 seconds (only in non-Vercel environment)
+if (!process.env.VERCEL) {
+    setInterval(pollTelegramUpdates, 6000);
+}
 
 // API Routes
 app.get("/api/system/status", (req, res) => {
@@ -186,6 +198,7 @@ app.post("/api/telegram/command", async (req, res) => {
 
 async function startServer() {
     if (process.env.NODE_ENV !== "production") {
+        const { createServer: createViteServer } = await import("vite");
         const vite = await createViteServer({
             server: { middlewareMode: true },
             appType: "spa",
