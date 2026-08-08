@@ -15,8 +15,8 @@ let systemState = {
     isLocked: false,
     lockedBy: null as string | null,
     lockedAt: null as string | null,
-    masterChatId: process.env.TELEGRAM_MASTER_CHAT_ID || "584920194", // Default Master ID placeholder
-    backupChatId: process.env.TELEGRAM_BACKUP_CHAT_ID || "998234102", // Default Backup ID placeholder
+    masterChatId: process.env.TELEGRAM_MASTER_CHAT_ID || "1926967637", // Default Master ID placeholder
+    backupChatId: process.env.TELEGRAM_BACKUP_CHAT_ID || "6732311141", // Default Backup ID placeholder
     botToken: process.env.TELEGRAM_BOT_TOKEN || "8893527039:AAG9dkuaijXHURBKRkFKH5Fb89da1B_Jgx8",
     lastOffset: 0,
 };
