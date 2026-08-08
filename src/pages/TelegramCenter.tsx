@@ -43,23 +43,53 @@ export function TelegramCenter() {
   // Kill Switch & Master/Backup ID State
   const [masterId, setMasterId] = useState('');
   const [backupId, setBackupId] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
+  const [isRegisteringWebhook, setIsRegisteringWebhook] = useState(false);
   const [isSavingKillSwitch, setIsSavingKillSwitch] = useState(false);
   const [testCommand, setTestCommand] = useState('đóng');
   const [testChatId, setTestChatId] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
 
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch('/api/system/status');
+      if (res.ok) {
+        const data = await res.json();
+        setMasterId(data.masterChatId || '');
+        setBackupId(data.backupChatId || '');
+        setWebhookUrl(data.webhookUrl || null);
+        if (!testChatId) setTestChatId(data.masterChatId || '');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
-    fetch('/api/system/status')
-      .then(res => res.json())
-      .then(data => {
-        if (data) {
-          setMasterId(data.masterChatId || '');
-          setBackupId(data.backupChatId || '');
-          setTestChatId(data.masterChatId || '');
-        }
-      })
-      .catch(console.error);
+    fetchStatus();
   }, []);
+
+  const handleSetupWebhook = async (action: 'setup' | 'delete') => {
+    setIsRegisteringWebhook(true);
+    try {
+      const res = await fetch('/api/telegram/webhook/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, domain: window.location.origin })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(action === 'setup' ? 'Đã kích hoạt Telegram Webhook cho Production thành công!' : 'Đã hủy Webhook, chuyển sang Polling!');
+        fetchStatus();
+      } else {
+        toast.error(`Lỗi Webhook: ${data.description || 'Thất bại'}`);
+      }
+    } catch (err) {
+      toast.error('Lỗi khi kết nối tới Webhook API');
+    } finally {
+      setIsRegisteringWebhook(false);
+    }
+  };
 
   const handleSaveKillSwitch = async () => {
     setIsSavingKillSwitch(true);
@@ -1160,7 +1190,7 @@ export function TelegramCenter() {
           </div>
         </div>
       )}
-      
+
       {/* TAB 5: KILL SWITCH (MASTER & BACKUP ID) */}
       {activeTab === 'killswitch' && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 md:p-6 shadow-xs space-y-6">
@@ -1208,10 +1238,10 @@ export function TelegramCenter() {
                 type="text"
                 value={masterId}
                 onChange={(e) => setMasterId(e.target.value)}
-                placeholder="VD: 584920194"
+                placeholder="VD: 584920194, 1926967637"
                 className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-[10px] text-slate-500">ID cá nhân Telegram của quản trị viên cao nhất.</p>
+              <p className="text-[10px] text-slate-500">ID cá nhân Telegram của quản trị viên cao nhất. Hỗ trợ nhiều ID phân cách bằng dấu phẩy.</p>
             </div>
 
             <div className="space-y-1.5">
@@ -1222,7 +1252,7 @@ export function TelegramCenter() {
                 type="text"
                 value={backupId}
                 onChange={(e) => setBackupId(e.target.value)}
-                placeholder="VD: 998234102"
+                placeholder="VD: 998234102, 6732311141"
                 className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-[10px] text-slate-500">ID dự phòng trong trường hợp tài khoản chính gặp sự cố.</p>
@@ -1238,6 +1268,58 @@ export function TelegramCenter() {
               {isSavingKillSwitch ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
               Lưu Master & Backup ID
             </button>
+          </div>
+
+          {/* Production Webhook Integration Card */}
+          <div className="p-5 bg-gradient-to-r from-slate-900 via-sky-950 to-blue-950 text-white rounded-2xl border border-sky-800/60 space-y-4 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-5 h-5 text-sky-400 animate-pulse" />
+                  <h4 className="text-sm font-extrabold text-white">
+                    Production Webhook Mode (Kích Hoạt Nhận Lệnh Tức Thời Môi Trường Production)
+                  </h4>
+                </div>
+                <p className="text-xs text-sky-200/80 leading-relaxed">
+                  Trên môi trường Production (HTTPS Cloud/Vercel/Cloud Run), Telegram gửi lệnh trực tiếp qua Webhook POST endpoint <code>/api/telegram/webhook</code> thay vì Polling. Hãy bấm nút dưới đây để kích hoạt Webhook tự động với Telegram Bot.
+                </p>
+              </div>
+
+              <div className="shrink-0 text-right">
+                <span className={`px-2.5 py-1 rounded-full text-xs font-black uppercase flex items-center gap-1.5 ${webhookUrl ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'}`}>
+                  <span className={`w-2 h-2 rounded-full ${webhookUrl ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`}></span>
+                  {webhookUrl ? 'Webhook Hoạt Động' : 'Polling Trực Tiếp'}
+                </span>
+              </div>
+            </div>
+
+            {webhookUrl && (
+              <div className="p-3 bg-slate-950/80 rounded-xl border border-sky-900/60 font-mono text-xs text-sky-300 flex items-center justify-between">
+                <span className="truncate">URL: {webhookUrl}</span>
+                <span className="text-[10px] text-emerald-400 font-bold shrink-0">ACTIVE</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-1">
+              {webhookUrl && (
+                <button
+                  onClick={() => handleSetupWebhook('delete')}
+                  disabled={isRegisteringWebhook}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 transition-all cursor-pointer"
+                >
+                  Hủy Webhook (Dùng Polling)
+                </button>
+              )}
+
+              <button
+                onClick={() => handleSetupWebhook('setup')}
+                disabled={isRegisteringWebhook}
+                className="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-sky-500/20 flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+              >
+                {isRegisteringWebhook ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                <span>{webhookUrl ? 'Cập Nhật Webhook URL' : 'Kích Hoạt Webhook Telegram'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Simulator Box */}

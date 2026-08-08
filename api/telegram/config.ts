@@ -1,8 +1,4 @@
-let configState = {
-  masterChatId: "584920194",
-  backupChatId: "998234102",
-  botToken: "8893527039:AAG9dkuaijXHURBKRkFKH5Fb89da1B_Jgx8",
-};
+import { getSystemState, updateSystemConfig } from "../../src/lib/telegramState.js";
 
 export default function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -14,25 +10,28 @@ export default function handler(req: any, res: any) {
   }
 
   if (req.method === "GET") {
+    const state = getSystemState();
     return res.status(200).json({
-      masterChatId: configState.masterChatId,
-      backupChatId: configState.backupChatId,
-      botToken: configState.botToken ? configState.botToken.replace(/(.{10}).*(.{4})/, "$1****$2") : "",
+      masterChatId: state.masterChatId,
+      backupChatId: state.backupChatId,
+      botToken: state.botToken ? state.botToken.replace(/(.{10}).*(.{4})/, "$1****$2") : "",
+      webhookUrl: state.webhookUrl,
     });
   }
 
   if (req.method === "POST") {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     const { masterChatId, backupChatId, botToken } = body;
-    if (masterChatId !== undefined) configState.masterChatId = masterChatId;
-    if (backupChatId !== undefined) configState.backupChatId = backupChatId;
-    if (botToken !== undefined && !botToken.includes("****")) configState.botToken = botToken;
+    updateSystemConfig({ masterChatId, backupChatId, botToken });
+    const state = getSystemState();
     return res.status(200).json({
       success: true,
-      masterChatId: configState.masterChatId,
-      backupChatId: configState.backupChatId,
+      masterChatId: state.masterChatId,
+      backupChatId: state.backupChatId,
+      webhookUrl: state.webhookUrl,
     });
   }
 
   return res.status(405).json({ error: "Method not allowed" });
 }
+

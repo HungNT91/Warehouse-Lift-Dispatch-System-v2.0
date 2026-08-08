@@ -1,3 +1,5 @@
+import { getSystemState } from "../../src/lib/telegramState.js";
+
 export default function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -7,11 +9,15 @@ export default function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
+  const state = getSystemState();
+
   return res.status(200).json({
-    isLocked: false,
-    lockedBy: null,
-    lockedAt: null,
-    masterChatId: "584920194",
-    backupChatId: "998234102",
+    isLocked: state.isLocked,
+    lockedBy: state.lockedBy,
+    lockedAt: state.lockedAt,
+    masterChatId: state.masterChatId,
+    backupChatId: state.backupChatId,
+    webhookUrl: state.webhookUrl,
   });
 }
+

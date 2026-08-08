@@ -1,3 +1,5 @@
+import { processTelegramCommand } from "../../src/lib/telegramState.js";
+
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -17,9 +19,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Missing chatId or text" });
   }
 
-  return res.status(200).json({
-    success: true,
-    handled: true,
-    isLocked: false,
-  });
+  const result = await processTelegramCommand(String(chatId), text, senderName || "API User");
+  return res.status(200).json(result);
 }
+
