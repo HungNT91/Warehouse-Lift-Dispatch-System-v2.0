@@ -60,6 +60,8 @@ export interface DbLift {
   lock_type?: string | null; // varchar
   reservation_id?: string | null; // uuid
   allowed_floors?: number[]; // jsonb / array
+  pickup_start_time?: number | string | null;
+  source_floor?: number | string | null;
 }
 
 export interface DbLiftCommand {

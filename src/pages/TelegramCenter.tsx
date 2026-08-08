@@ -36,9 +36,69 @@ export function TelegramCenter() {
     saveSettingsToDb
   } = useTelegramStore();
 
-  const [activeTab, setActiveTab] = useState<'dispatch' | 'guide' | 'settings' | 'logs'>('dispatch');
+  const [activeTab, setActiveTab] = useState<'dispatch' | 'guide' | 'settings' | 'logs' | 'killswitch'>('dispatch');
   const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // Kill Switch & Master/Backup ID State
+  const [masterId, setMasterId] = useState('');
+  const [backupId, setBackupId] = useState('');
+  const [isSavingKillSwitch, setIsSavingKillSwitch] = useState(false);
+  const [testCommand, setTestCommand] = useState('đóng');
+  const [testChatId, setTestChatId] = useState('');
+  const [testResult, setTestResult] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/api/system/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          setMasterId(data.masterChatId || '');
+          setBackupId(data.backupChatId || '');
+          setTestChatId(data.masterChatId || '');
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const handleSaveKillSwitch = async () => {
+    setIsSavingKillSwitch(true);
+    try {
+      const res = await fetch('/api/telegram/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ masterChatId: masterId, backupChatId: backupId })
+      });
+      if (res.ok) {
+        toast.success('Đã cập nhật Master & Backup ID thành công!');
+      } else {
+        toast.error('Lỗi khi cập nhật cấu hình.');
+      }
+    } catch (err) {
+      toast.error('Lỗi kết nối server.');
+    } finally {
+      setIsSavingKillSwitch(false);
+    }
+  };
+
+  const handleRunTestCommand = async () => {
+    try {
+      const res = await fetch('/api/telegram/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: testChatId, text: testCommand, senderName: 'Admin Tester' })
+      });
+      const data = await res.json();
+      setTestResult(data);
+      if (data.handled) {
+        toast.success(`Lệnh "${testCommand}" đã được xử lý! Trạng thái: ${data.isLocked ? 'ĐÃ KHÓA' : 'ĐÃ MỞ'}`);
+      } else {
+        toast.error('Lệnh bị từ chối hoặc Chat ID không khớp Master/Backup!');
+      }
+    } catch (err) {
+      toast.error('Lỗi khi gửi lệnh test.');
+    }
+  };
 
   useEffect(() => {
     loadLogsFromDb();
@@ -365,6 +425,17 @@ export function TelegramCenter() {
         >
           <ListFilter className="w-4 h-4" />
           <span>Lịch Sử Gửi Tin ({logs.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('killswitch')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition-all cursor-pointer ${activeTab === 'killswitch'
+            ? 'bg-red-600 text-white shadow-xs'
+            : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-red-600 dark:text-red-400'
+            }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>🔐 Kill Switch (Master & Backup ID)</span>
         </button>
       </div>
 
@@ -1085,6 +1156,139 @@ export function TelegramCenter() {
                   )}
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* TAB 5: KILL SWITCH (MASTER & BACKUP ID) */}
+      {activeTab === 'killswitch' && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 md:p-6 shadow-xs space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-red-500/10 text-red-600 dark:text-red-400 rounded-xl">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                  Cơ Chế Khóa Khẩn Cấp Hệ Thống (Kill Switch qua Telegram)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Điều khiển đóng/mở toàn bộ ứng dụng từ xa bằng Telegram Bot với xác thực Master & Backup ID.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Explanation Box */}
+          <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+            <h4 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-blue-500" />
+              Hướng Dẫn Thêm & Cấu Hình ID Telegram trong Mã Nguồn
+            </h4>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Tính năng này được triển khai ở tầng <b>Server-side (`server.ts`)</b> để đảm bảo bảo mật tuyệt đối. Khi có tin nhắn gửi tới Telegram Bot, server sẽ kiểm tra xem <code>chat.id</code> có khớp với <b>Master ID</b> hoặc <b>Backup ID</b> hay không:
+            </p>
+            <ul className="text-xs space-y-1.5 text-slate-600 dark:text-slate-300 list-disc list-inside font-mono">
+              <li>Nhắn <code className="text-red-500 font-bold">đóng</code> hoặc <code className="text-red-500 font-bold">/lockdown</code>: Khóa toàn hệ thống ngay lập tức trên mọi thiết bị.</li>
+              <li>Nhắn <code className="text-emerald-500 font-bold">mở</code> hoặc <code className="text-emerald-500 font-bold">/restore</code>: Khôi phục hoạt động bình thường.</li>
+            </ul>
+            <div className="pt-2 text-[11px] text-slate-500">
+              💡 <b>Vị trí cấu hình trong code:</b> Biến môi trường được lưu tại file <code className="text-blue-500">.env</code> (`TELEGRAM_MASTER_CHAT_ID` & `TELEGRAM_BACKUP_CHAT_ID`) và khởi tạo trong <code className="text-blue-500">server.ts</code>. Bạn cũng có thể cấu hình trực tiếp ngay bên dưới:
+            </div>
+          </div>
+
+          {/* Configuration Form */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300">
+                Telegram Master Chat ID (Tài khoản chính)
+              </label>
+              <input
+                type="text"
+                value={masterId}
+                onChange={(e) => setMasterId(e.target.value)}
+                placeholder="VD: 584920194"
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-slate-500">ID cá nhân Telegram của quản trị viên cao nhất.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-extrabold text-slate-700 dark:text-slate-300">
+                Telegram Backup Chat ID (Tài khoản dự phòng - Chống mất quyền)
+              </label>
+              <input
+                type="text"
+                value={backupId}
+                onChange={(e) => setBackupId(e.target.value)}
+                placeholder="VD: 998234102"
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-slate-500">ID dự phòng trong trường hợp tài khoản chính gặp sự cố.</p>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={handleSaveKillSwitch}
+              disabled={isSavingKillSwitch}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all"
+            >
+              {isSavingKillSwitch ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Lưu Master & Backup ID
+            </button>
+          </div>
+
+          {/* Simulator Box */}
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-6 space-y-4">
+            <h4 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500" />
+              Mô Phỏng / Kiểm Tra Lệnh Từ Xa
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Chat ID Gửi Lệnh</label>
+                <input
+                  type="text"
+                  value={testChatId}
+                  onChange={(e) => setTestChatId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Nội Dung Tin Nhắn</label>
+                <select
+                  value={testCommand}
+                  onChange={(e) => setTestCommand(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
+                >
+                  <option value="đóng">đóng (Global Lockdown)</option>
+                  <option value="mở">mở (Restore System)</option>
+                  <option value="/lockdown">/lockdown</option>
+                  <option value="/restore">/restore</option>
+                  <option value="sai_lenh">Tin nhắn khác (Bỏ qua)</option>
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={handleRunTestCommand}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Gửi Lệnh Test
+                </button>
+              </div>
+            </div>
+
+            {testResult && (
+              <div className="p-3 bg-slate-900 text-emerald-400 font-mono text-xs rounded-xl border border-slate-800 space-y-1">
+                <div>status: {testResult.success ? 'SUCCESS' : 'FAILED'}</div>
+                <div>handled: {testResult.handled ? 'true (Lệnh hợp lệ từ Master/Backup)' : 'false (Bị từ chối do không khớp ID)'}</div>
+                <div>system_is_locked: {testResult.isLocked ? 'TRUE (Đang khóa)' : 'FALSE (Đang mở)'}</div>
+              </div>
             )}
           </div>
         </div>
