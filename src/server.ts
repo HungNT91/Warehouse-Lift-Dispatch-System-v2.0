@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import {
     getSystemState,
     updateSystemConfig,
-    toggleGlobalLockdown,
     processTelegramCommand,
     pollTelegramUpdates,
     registerTelegramWebhook,
@@ -44,18 +43,6 @@ app.get("/api/system/status", (req, res) => {
         masterChatId: state.masterChatId,
         backupChatId: state.backupChatId,
         webhookUrl: state.webhookUrl,
-    });
-});
-
-// Direct Lockdown Toggle
-app.post("/api/system/lockdown", (req, res) => {
-    const { isLocked, lockedBy } = req.body;
-    const updatedState = toggleGlobalLockdown(!!isLocked, lockedBy || 'Admin UI');
-    res.json({
-        success: true,
-        isLocked: updatedState.isLocked,
-        lockedBy: updatedState.lockedBy,
-        lockedAt: updatedState.lockedAt
     });
 });
 

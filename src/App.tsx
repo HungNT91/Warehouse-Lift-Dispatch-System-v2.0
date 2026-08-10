@@ -21,7 +21,6 @@ import { useLiftStore } from "./stores/useLiftStore";
 import { useAuthStore } from "./stores/useAuthStore";
 import { useTelegramStore } from "./stores/useTelegramStore";
 import { useRealtimeSync } from "./hooks/useRealtimeSync";
-import { GlobalLockdownGuard } from "./components/GlobalLockdownGuard";
 
 export default function App() {
   const { fetchInitialData } = useLiftStore();
@@ -41,8 +40,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <GlobalLockdownGuard>
-        <Routes>
+      <Routes>
 
           <Route element={<PublicRoute />}>
             <Route path="/login" element={<Login />} />
@@ -70,8 +68,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Route>
-        </Routes>
-      </GlobalLockdownGuard>
+      </Routes>
     </BrowserRouter>
   );
 }

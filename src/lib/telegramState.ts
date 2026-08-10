@@ -237,82 +237,24 @@ export async function processTelegramCommand(
     // Check authorization
     if (!isAuthorizedUser(stringChatId)) {
         console.warn(`[Telegram Security] Unauthorized command attempt from Chat ID: "${stringChatId}" (${senderName}). Text: "${text}"`);
-        console.warn(`Authorized Chat IDs set:`, Array.from(getAuthorizedChatIds()));
         return {
             success: false,
             handled: false,
-            isLocked: state.isLocked,
-            reason: `Unauthorized Chat ID: ${stringChatId}. Required Master ID (${state.masterChatId}) or Backup ID (${state.backupChatId})`
+            isLocked: false,
+            reason: `Unauthorized Chat ID: ${stringChatId}`
         };
-    }
-
-    const firstWord = cleanText.split(/[\s@]+/)[0];
-
-    // Unlock commands check
-    const unlockKeywords = [
-        "mở", "mo", "mở khóa", "mo khoa", "mokhoa", "mo khoa khan cap",
-        "mở khóa khẩn cấp", "khôi phục", "khoiphuc", "khoi phuc",
-        "/restore", "/unlock", "restore", "unlock", "open", "un-lock",
-        "mở hệ thống", "mo he thong"
-    ];
-    const isUnlockCommand = unlockKeywords.some(cmd =>
-        cleanText === cmd ||
-        cleanText.startsWith(cmd + " ") ||
-        cleanText.startsWith(cmd + "@") ||
-        firstWord === cmd
-    );
-
-    // Lock commands check
-    const lockKeywords = [
-        "đóng", "dong", "khóa", "khoa", "khoá",
-        "khóa khẩn cấp", "khoa khan cap", "khóa hệ thống", "khoa he thong",
-        "/lockdown", "/lock", "lockdown", "lock", "close"
-    ];
-    const isLockCommand = lockKeywords.some(cmd =>
-        cleanText === cmd ||
-        cleanText.startsWith(cmd + " ") ||
-        cleanText.startsWith(cmd + "@") ||
-        firstWord === cmd
-    );
-
-    if (isUnlockCommand) {
-        state.isLocked = false;
-        state.lockedBy = null;
-        state.lockedAt = null;
-        saveState();
-
-        console.log(`✅ SYSTEM RESTORED via Telegram by ${senderName} (Chat ID: ${stringChatId})`);
-        await sendTelegramReply(
-            stringChatId,
-            `✅ <b>HỆ THỐNG ĐÃ ĐƯỢC MỞ KHÓA & KHÔI PHỤC</b>\n\n- Người thực hiện: ${senderName}\n- Chat ID: <code>${stringChatId}</code>\n- Thời gian: ${new Date().toLocaleString('vi-VN')}\n- Trạng thái: Ứng dụng đã mở khóa, hoạt động bình thường trở lại.`
-        );
-        return { success: true, handled: true, isLocked: false };
-    }
-
-    if (isLockCommand) {
-        state.isLocked = true;
-        state.lockedBy = `${senderName} (Chat ID: ${stringChatId})`;
-        state.lockedAt = new Date().toISOString();
-        saveState();
-
-        console.log(`🚨 GLOBAL LOCKDOWN ACTIVATED via Telegram by ${state.lockedBy}`);
-        await sendTelegramReply(
-            stringChatId,
-            `🚨 <b>HỆ THỐNG ĐÃ BỊ KHÓA KHẨN CẤP (GLOBAL LOCKDOWN)</b>\n\n- Người thực hiện: ${senderName}\n- Chat ID: <code>${stringChatId}</code>\n- Thời gian: ${new Date().toLocaleString('vi-VN')}\n- Trạng thái: Toàn bộ thao tác trên ứng dụng W.L.D.S đã bị khóa trên mọi màn hình người dùng.`
-        );
-        return { success: true, handled: true, isLocked: true };
     }
 
     // Help or Status check command
     if (cleanText === "/status" || cleanText === "status" || cleanText === "/start" || cleanText === "start") {
         await sendTelegramReply(
             stringChatId,
-            `🤖 <b>W.L.D.S TELEGRAM SYSTEM BOT</b>\n\n- Trạng thái hệ thống: ${state.isLocked ? '🔴 ĐANG BỊ KHÓA' : '🟢 ĐANG HOẠT ĐỘNG'}\n- Master Chat ID: <code>${state.masterChatId}</code>\n- Backup Chat ID: <code>${state.backupChatId}</code>\n\n<b>Các lệnh hợp lệ:</b>\n- <code>đóng</code> hoặc <code>/lockdown</code>: Khóa ứng dụng khẩn cấp\n- <code>mở</code> hoặc <code>/restore</code>: Khôi phục mở ứng dụng`
+            `🤖 <b>W.L.D.S TELEGRAM SYSTEM BOT</b>\n\n- Trạng thái hệ thống: 🟢 ĐANG HOẠT ĐỘNG\n- Master Chat ID: <code>${state.masterChatId}</code>\n- Backup Chat ID: <code>${state.backupChatId}</code>\n\n<b>Bot đang hoạt động và sẵn sàng gửi cảnh báo kho tự động.</b>`
         );
-        return { success: true, handled: true, isLocked: state.isLocked };
+        return { success: true, handled: true, isLocked: false };
     }
 
-    return { success: true, handled: false, isLocked: state.isLocked, reason: 'Command not recognized' };
+    return { success: true, handled: false, isLocked: false, reason: 'Command not recognized' };
 }
 
 /**
