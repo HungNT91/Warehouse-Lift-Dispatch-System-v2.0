@@ -6,11 +6,14 @@ import {
   Radio, ListFilter, Trash2, Smartphone, Terminal, Zap, Info
 } from 'lucide-react';
 import { useTelegramStore, TelegramLog } from '../stores/useTelegramStore';
+import { useAuthStore } from '../stores/useAuthStore';
+import { useLiftStore } from '../stores/useLiftStore';
 import { toast } from 'sonner';
 import { db } from '../api/dbClient';
 import { speakText } from '../utils/audio';
 
 export function TelegramCenter() {
+  const { user } = useAuthStore();
   const {
     botToken,
     botName,
@@ -291,35 +294,94 @@ export function TelegramCenter() {
 
     let targetChatId = defaultChatId;
     let targetLabel = 'Kênh Chung Kho';
+    let targetFloor = 0; // 0 = Kênh chung / Tất cả các tầng
 
     if (targetGroup === 'TECH') {
       targetChatId = techChatId;
       targetLabel = 'Kỹ Thuật Bảo Trì';
+      targetFloor = 0;
     } else if (targetGroup.startsWith('FLOOR_')) {
-      const floorNum = parseInt(targetGroup.replace('FLOOR_', ''));
-      const cfg = floorConfigs[floorNum];
+      targetFloor = parseInt(targetGroup.replace('FLOOR_', ''), 10) || 0;
+      const cfg = floorConfigs[targetFloor];
       if (cfg) {
         targetChatId = cfg.chatId;
         targetLabel = cfg.groupName;
       }
     }
 
-    // Phát âm thanh đọc nội dung tin nhắn (Text to Speech) nếu bật chế độ đọc
-    if (enableTts) {
-      speakText(messageText);
+    // Nếu gửi ở kênh chung nhưng tin nhắn chỉ định rõ "Tầng X", tự nhận diện tầng mục tiêu
+    if (targetFloor === 0) {
+      const match = messageText.match(/tầng\s*([1-4])/i);
+      if (match) {
+        targetFloor = parseInt(match[1], 10) || 0;
+      }
     }
 
+    // Gửi tin nhắn qua Telegram API endpoint
     const res = await sendTelegramMessage({
       chatId: targetChatId,
       targetGroupLabel: targetLabel,
       message: messageText,
     });
 
+    // Nếu bật tính năng đọc giọng nói (TTS): phát thanh tới thiết bị của các tài khoản được phân công làm việc ở tầng đó
+    if (enableTts) {
+      const senderUserId = user?.id || 'u1';
+      const notifTitle = targetFloor > 0
+        ? `🔊 Thông báo phát thanh Tầng ${targetFloor}`
+        : `🔊 Thông báo phát thanh Kênh Chung`;
+
+      const formattedMessage = `[AUDIO_DISPATCH|F${targetFloor}|SENDER:${senderUserId}] ${messageText}`;
+
+      // 1. Phát qua BroadcastChannel để các tab khác trên cùng trình duyệt phát giọng đọc tức thì
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const bc = new BroadcastChannel('wlds_audio_dispatch');
+          bc.postMessage({
+            id: `audio-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            targetFloor,
+            senderId: senderUserId,
+            text: messageText,
+            timestamp: Date.now()
+          });
+          bc.close();
+        } catch (e) {
+          console.warn('BroadcastChannel error:', e);
+        }
+      }
+
+      // 2. Lưu Notification vào DB để truyền đồng bộ tới tất cả thiết bị tài khoản khác ở tầng đó via Realtime/Polling
+      await db.notifications.create({
+        notification_type: `AUDIO_DISPATCH_F${targetFloor}`,
+        title: notifTitle,
+        message: formattedMessage,
+        status: 'SENT'
+      }).catch(console.error);
+
+      // 3. Cập nhật state Notifications cục bộ
+      const newNotif = {
+        id: `notif-audio-${Date.now()}`,
+        title: notifTitle,
+        message: formattedMessage,
+        severity: 'info' as const,
+        category: 'telegram' as const,
+        is_read: false,
+        created_at: new Date().toISOString(),
+        target_floor: targetFloor,
+        sender_id: senderUserId
+      };
+
+      useLiftStore.setState(state => ({
+        notifications: [newNotif, ...state.notifications]
+      }));
+    }
+
     setIsSending(false);
 
     if (res.success) {
+      const floorTargetDesc = targetFloor > 0 ? `Tầng ${targetFloor}` : 'Kênh Chung';
       toast.success(
-        `Đã phát tin nhắn tới Telegram (${targetLabel}) ${enableTts ? 'và đọc thông báo TTS ' : ''}thành công!`
+        `Đã phát tin tới Telegram (${targetLabel}) ${enableTts ? `và phát thanh giọng đọc TTS tới ${floorTargetDesc} ` : ''}thành công!`
       );
     } else {
       toast.error(`Thất bại: ${res.error}`);

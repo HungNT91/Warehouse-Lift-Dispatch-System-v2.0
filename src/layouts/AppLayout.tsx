@@ -2,9 +2,13 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopNav } from "./TopNav";
+import { useAudioBroadcast } from "../hooks/useAudioBroadcast";
 
 export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Kích hoạt lắng nghe phát thanh Text to Speech cho các tài khoản phân công ở tầng tương ứng
+  useAudioBroadcast();
 
   return (
     <div className="flex h-[100dvh] bg-slate-50 dark:bg-slate-950 overflow-hidden">
