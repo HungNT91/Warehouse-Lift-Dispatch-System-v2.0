@@ -36,12 +36,19 @@ if (typeof window !== 'undefined') {
  * Text-to-Speech (TTS) voice announcement in Vietnamese
  */
 export function speakText(text: string) {
+  // Always trigger chime sound alert for clear audibility
+  playElevatorChime();
+
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    playElevatorChime();
     return;
   }
 
   try {
+    // Resume speech synthesis if browser paused audio
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
     // Strip HTML tags and normalize whitespace for clean voice playback
     const cleanText = text
       .replace(/<[^>]*>?/gm, ' ')
@@ -52,25 +59,33 @@ export function speakText(text: string) {
 
     if (!cleanText) return;
 
-    // Cancel previous utterance so urgent announcements speak immediately
-    window.speechSynthesis.cancel();
+    // Small timeout after chime so speech follows chime smoothly
+    setTimeout(() => {
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'vi-VN';
-    utterance.rate = 0.95; // Clear natural voice rate for warehouse speakers
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'vi-VN';
+        utterance.rate = 0.95; // Clear natural voice rate for warehouse speakers
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
 
-    const voices = window.speechSynthesis.getVoices();
-    const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
-    if (viVoice) {
-      utterance.voice = viVoice;
-    }
+        const voices = window.speechSynthesis.getVoices();
+        const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
+        if (viVoice) {
+          utterance.voice = viVoice;
+        }
 
-    window.speechSynthesis.speak(utterance);
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn('SpeechSynthesis inner error:', err);
+      }
+    }, 300);
   } catch (err) {
-    console.warn('SpeechSynthesis error, falling back to chime:', err);
-    playElevatorChime();
+    console.warn('SpeechSynthesis error:', err);
   }
 }
 

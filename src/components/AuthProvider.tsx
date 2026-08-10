@@ -16,20 +16,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (isSupabaseConfigured()) {
           const supabase = getSupabase();
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          
+
           if (!sessionError && session?.user) {
             let userData: User | null = null;
             try {
               // Retrieve user from 'users' table
               const allUsers = await db.users.getAll();
               const allRoles = await db.roles.getAll();
-              
-              let matched = allUsers.find(u => 
-                u.id === session.user.id || 
+
+              let matched = allUsers.find(u =>
+                u.id === session.user.id ||
                 (u.email && session.user.email && u.email.toLowerCase() === session.user.email.toLowerCase()) ||
                 (u.employee_code && session.user.email?.toLowerCase().includes(u.employee_code.toLowerCase()))
               );
-              
+
               if (matched) {
                 const roleObj = allRoles.find(r => r.id === matched!.role_id);
                 let roleName: 'Admin' | 'Supervisor' | 'Worker' = 'Worker';
@@ -60,19 +60,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // Fetch today's assignment for current user if logged in
+        // Fetch assignment for current user if logged in
         const activeUser = useAuthStore.getState().user;
         if (activeUser && mounted) {
           try {
-            const assignments = await db.dailyAssignments.getAll();
+            const [assignments, dbFloors] = await Promise.all([
+              db.dailyAssignments.getAll(),
+              db.floors.getAll().catch(() => [])
+            ]);
             const today = new Date().toISOString().split('T')[0];
-            const myAssignment = assignments.find(a => a.user_id === activeUser.id && (a.work_date === today || !a.work_date));
+            const myAssignment = assignments
+              .filter(a => a.user_id === activeUser.id || a.user_id === activeUser.employee_code)
+              .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+
             if (myAssignment) {
+              let assignedFloor = 1;
+              if (myAssignment.floor_id) {
+                const strFloor = String(myAssignment.floor_id);
+                const matchedDbFloor = dbFloors.find(f => f.id === strFloor);
+                if (matchedDbFloor) {
+                  assignedFloor = matchedDbFloor.floor_no;
+                } else if (strFloor.includes('22222222') || strFloor.includes('f2') || strFloor === '2') {
+                  assignedFloor = 2;
+                } else if (strFloor.includes('33333333') || strFloor.includes('f3') || strFloor === '3') {
+                  assignedFloor = 3;
+                } else if (strFloor.includes('44444444') || strFloor.includes('f4') || strFloor === '4') {
+                  assignedFloor = 4;
+                } else {
+                  const num = parseInt(strFloor.replace(/[^0-9]/g, ''), 10);
+                  if (!isNaN(num) && num > 0 && num <= 10) assignedFloor = num;
+                }
+              }
+
               setAssignment({
                 id: myAssignment.id,
                 user_id: myAssignment.user_id,
                 lift_id: myAssignment.lift_id,
-                assigned_floor: 1, // default or parsed floor
+                assigned_floor: assignedFloor,
                 work_date: myAssignment.work_date || today,
                 created_at: myAssignment.created_at,
                 updated_at: myAssignment.created_at,

@@ -599,8 +599,8 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         id: n.id,
         title: n.title,
         message: n.message,
-        severity: (n.notification_type && n.notification_type.includes('WARNING')) ? 'warning' : 'info',
-        category: 'job',
+        severity: (n.notification_type && (n.notification_type.includes('WARNING') || n.notification_type.includes('URGENT'))) ? 'warning' : 'info',
+        category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'telegram' : 'job',
         is_read: n.status === 'READ',
         created_at: n.created_at,
         link_id: n.job_id
