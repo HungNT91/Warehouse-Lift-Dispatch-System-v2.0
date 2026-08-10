@@ -8,6 +8,7 @@ import {
 import { useTelegramStore, TelegramLog } from '../stores/useTelegramStore';
 import { toast } from 'sonner';
 import { db } from '../api/dbClient';
+import { speakText } from '../utils/audio';
 
 export function TelegramCenter() {
   const {
@@ -144,6 +145,7 @@ export function TelegramCenter() {
   const [targetGroup, setTargetGroup] = useState<string>('DEFAULT');
   const [templateType, setTemplateType] = useState<string>('CUSTOM');
   const [messageText, setMessageText] = useState<string>('🚨 <b>CẢNH BÁO TỒN ĐỌNG HÀNG</b>\nThang P3 tại Tầng 4 có đơn hàng chờ lấy quá 3 phút! Đội kho Tầng 4 vui lòng kiểm tra và kéo hàng ra khỏi thang gấp.');
+  const [enableTts, setEnableTts] = useState<boolean>(true);
   const [isSending, setIsSending] = useState<boolean>(false);
 
   // Settings State
@@ -302,6 +304,11 @@ export function TelegramCenter() {
       }
     }
 
+    // Phát âm thanh đọc nội dung tin nhắn (Text to Speech) nếu bật chế độ đọc
+    if (enableTts) {
+      speakText(messageText);
+    }
+
     const res = await sendTelegramMessage({
       chatId: targetChatId,
       targetGroupLabel: targetLabel,
@@ -311,7 +318,9 @@ export function TelegramCenter() {
     setIsSending(false);
 
     if (res.success) {
-      toast.success(`Đã phát tin nhắn tới Telegram (${targetLabel}) thành công!`);
+      toast.success(
+        `Đã phát tin nhắn tới Telegram (${targetLabel}) ${enableTts ? 'và đọc thông báo TTS ' : ''}thành công!`
+      );
     } else {
       toast.error(`Thất bại: ${res.error}`);
     }
@@ -538,9 +547,24 @@ export function TelegramCenter() {
 
             {/* Message Area */}
             <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                3. Nội Dung Tin Nhắn Telegram (Hỗ trợ thẻ HTML: &lt;b&gt;, &lt;i&gt;, &lt;code&gt;)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  3. Nội Dung Tin Nhắn Telegram (Hỗ trợ thẻ HTML: &lt;b&gt;, &lt;i&gt;, &lt;code&gt;)
+                </label>
+
+                {/* TTS Toggle Switch */}
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-3 py-1 rounded-xl border border-sky-200/80 dark:border-sky-800">
+                  <Volume2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                  <span>Đọc TTS Khi Gửi</span>
+                  <input
+                    type="checkbox"
+                    checked={enableTts}
+                    onChange={(e) => setEnableTts(e.target.checked)}
+                    className="w-4 h-4 accent-sky-600 rounded cursor-pointer"
+                  />
+                </label>
+              </div>
+
               <textarea
                 rows={6}
                 value={messageText}
@@ -550,28 +574,53 @@ export function TelegramCenter() {
               ></textarea>
             </div>
 
-            {/* Submit Button */}
-            <div className="flex items-center justify-between pt-2">
-              <p className="text-[11px] text-slate-500">
-                Tin nhắn sẽ được gửi trực tiếp qua Telegram Bot API endpoint
+            {/* Actions & Submit Button */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+              <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                <Volume2 className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                <span>
+                  {enableTts
+                    ? 'Hệ thống sẽ phát âm thanh giọng đọc tiếng Việt (TTS) song song khi phát tin.'
+                    : 'Chế độ đọc giọng nói TTS đang tắt.'}
+                </span>
               </p>
-              <button
-                onClick={handleSendDispatch}
-                disabled={isSending}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs md:text-sm rounded-xl shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
-              >
-                {isSending ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Đang phát tin...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>Gửi Ngay Qua Telegram</span>
-                  </>
-                )}
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!messageText.trim()) {
+                      toast.error('Chưa có nội dung để nghe thử!');
+                      return;
+                    }
+                    speakText(messageText);
+                    toast.info('🔊 Đang phát âm thanh đọc thử (TTS)...');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  title="Nghe thử giọng đọc Text-To-Speech trước khi phát tin"
+                >
+                  <Volume2 className="w-4 h-4 text-sky-500" />
+                  <span>Nghe Thử TTS</span>
+                </button>
+
+                <button
+                  onClick={handleSendDispatch}
+                  disabled={isSending}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs md:text-sm rounded-xl shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Đang phát tin...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Gửi Ngay Qua Telegram</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 

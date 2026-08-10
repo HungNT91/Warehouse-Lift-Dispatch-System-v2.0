@@ -42,10 +42,20 @@ export function speakText(text: string) {
   }
 
   try {
+    // Strip HTML tags and normalize whitespace for clean voice playback
+    const cleanText = text
+      .replace(/<[^>]*>?/gm, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, ' và ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) return;
+
     // Cancel previous utterance so urgent announcements speak immediately
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = 'vi-VN';
     utterance.rate = 0.95; // Clear natural voice rate for warehouse speakers
     utterance.pitch = 1.0;
