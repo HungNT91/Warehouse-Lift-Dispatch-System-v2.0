@@ -61,6 +61,15 @@ export function getSystemState(): TelegramSystemState {
     return state;
 }
 
+export function toggleGlobalLockdown(isLocked: boolean, lockedBy: string = 'Admin'): TelegramSystemState {
+    state.isLocked = isLocked;
+    state.lockedBy = isLocked ? lockedBy : null;
+    state.lockedAt = isLocked ? new Date().toISOString() : null;
+    saveState();
+    console.log(`${isLocked ? '🚨 GLOBAL LOCKDOWN ACTIVATED' : '✅ SYSTEM RESTORED'} by ${lockedBy}`);
+    return state;
+}
+
 export function updateSystemConfig(updates: { masterChatId?: string; backupChatId?: string; botToken?: string }) {
     if (updates.masterChatId !== undefined && updates.masterChatId.trim() !== '') {
         state.masterChatId = updates.masterChatId.trim();
@@ -237,19 +246,33 @@ export async function processTelegramCommand(
         };
     }
 
+    // Unlock commands check
+    const isUnlockCommand = [
+        "mở", "mo", "mở khóa", "mo khoa", "mokhoa", "mo khoa khan cap",
+        "mở khóa khẩn cấp", "khôi phục", "khoiphuc", "khoi phuc",
+        "/restore", "/unlock", "restore", "unlock"
+    ].some(cmd => cleanText === cmd || cleanText.startsWith(cmd + " "));
+
     // Lock commands check
     const isLockCommand = [
         "đóng", "dong", "khóa", "khoa", "khoá",
-        "mở khóa khẩn cấp", "khóa khẩn cấp", "khoa khan cap",
+        "khóa khẩn cấp", "khoa khan cap",
         "/lockdown", "/lock", "lockdown", "lock"
     ].some(cmd => cleanText === cmd || cleanText.startsWith(cmd + " "));
 
-    // Unlock commands check
-    const isUnlockCommand = [
-        "mở", "mo", "mở khóa", "mo khoa", "mokhoa",
-        "khôi phục", "khoiphuc", "khoi phuc",
-        "/restore", "/unlock", "restore", "unlock"
-    ].some(cmd => cleanText === cmd || cleanText.startsWith(cmd + " "));
+    if (isUnlockCommand) {
+        state.isLocked = false;
+        state.lockedBy = null;
+        state.lockedAt = null;
+        saveState();
+
+        console.log(`✅ SYSTEM RESTORED via Telegram by ${senderName} (Chat ID: ${stringChatId})`);
+        await sendTelegramReply(
+            stringChatId,
+            `✅ <b>HỆ THỐNG ĐÃ ĐƯỢC MỞ KHÓA & KHÔI PHỤC</b>\n\n- Người thực hiện: ${senderName}\n- Chat ID: <code>${stringChatId}</code>\n- Thời gian: ${new Date().toLocaleString('vi-VN')}\n- Trạng thái: Ứng dụng đã mở khóa, hoạt động bình thường trở lại.`
+        );
+        return { success: true, handled: true, isLocked: false };
+    }
 
     if (isLockCommand) {
         state.isLocked = true;

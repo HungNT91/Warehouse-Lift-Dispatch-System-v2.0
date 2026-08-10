@@ -3,7 +3,7 @@ import {
   Send, Bot, MessageCircle, SignalHigh, CheckCircle2, XCircle,
   Users, Settings, HelpCircle, Copy, Check, RefreshCw, Key, ShieldCheck,
   AlertTriangle, ArrowRight, ExternalLink, Sparkles, Layers, Volume2,
-  Radio, ListFilter, Trash2, Smartphone, Terminal, Zap, Info
+  Radio, ListFilter, Trash2, Smartphone, Terminal, Zap, Info, Lock, Unlock
 } from 'lucide-react';
 import { useTelegramStore, TelegramLog } from '../stores/useTelegramStore';
 import { toast } from 'sonner';
@@ -44,6 +44,8 @@ export function TelegramCenter() {
   const [masterId, setMasterId] = useState('');
   const [backupId, setBackupId] = useState('');
   const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
+  const [isSystemLocked, setIsSystemLocked] = useState<boolean>(false);
+  const [lockedBy, setLockedBy] = useState<string | null>(null);
   const [isRegisteringWebhook, setIsRegisteringWebhook] = useState(false);
   const [isSavingKillSwitch, setIsSavingKillSwitch] = useState(false);
   const [testCommand, setTestCommand] = useState('đóng');
@@ -58,6 +60,8 @@ export function TelegramCenter() {
         setMasterId(data.masterChatId || '');
         setBackupId(data.backupChatId || '');
         setWebhookUrl(data.webhookUrl || null);
+        setIsSystemLocked(!!data.isLocked);
+        setLockedBy(data.lockedBy || null);
         if (!testChatId) setTestChatId(data.masterChatId || '');
       }
     } catch (err) {
@@ -67,7 +71,28 @@ export function TelegramCenter() {
 
   useEffect(() => {
     fetchStatus();
+    const interval = setInterval(fetchStatus, 3000);
+    return () => clearInterval(interval);
   }, []);
+
+  const handleDirectLockdownToggle = async (targetLocked: boolean) => {
+    try {
+      const res = await fetch('/api/system/lockdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isLocked: targetLocked, lockedBy: 'Giao diện Quản trị (UI)' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsSystemLocked(data.isLocked);
+        setLockedBy(data.lockedBy);
+        toast.success(data.isLocked ? '🚨 ĐÃ KÍCH HOẠT KHÓA KHẨN CẤP TOÀN HỆ THỐNG!' : '✅ ĐÃ MỞ KHÓA KHÔI PHỤC HỆ THỐNG!');
+        fetchStatus();
+      }
+    } catch (err) {
+      toast.error('Lỗi khi thay đổi trạng thái khóa hệ thống.');
+    }
+  };
 
   const handleSetupWebhook = async (action: 'setup' | 'delete') => {
     setIsRegisteringWebhook(true);
@@ -94,13 +119,15 @@ export function TelegramCenter() {
   const handleSaveKillSwitch = async () => {
     setIsSavingKillSwitch(true);
     try {
+      const { botToken: currentBotToken } = useTelegramStore.getState();
       const res = await fetch('/api/telegram/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ masterChatId: masterId, backupChatId: backupId })
+        body: JSON.stringify({ masterChatId: masterId, backupChatId: backupId, botToken: currentBotToken })
       });
       if (res.ok) {
         toast.success('Đã cập nhật Master & Backup ID thành công!');
+        fetchStatus();
       } else {
         toast.error('Lỗi khi cập nhật cấu hình.');
       }
@@ -122,6 +149,7 @@ export function TelegramCenter() {
       setTestResult(data);
       if (data.handled) {
         toast.success(`Lệnh "${testCommand}" đã được xử lý! Trạng thái: ${data.isLocked ? 'ĐÃ KHÓA' : 'ĐÃ MỞ'}`);
+        fetchStatus();
       } else {
         toast.error('Lệnh bị từ chối hoặc Chat ID không khớp Master/Backup!');
       }
@@ -1208,6 +1236,28 @@ export function TelegramCenter() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Direct Emergency Lockdown Control Banner */}
+          <div className={`p-5 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all ${isSystemLocked ? 'bg-rose-500/10 border-rose-500/40 text-rose-700 dark:text-rose-300' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'}`}>
+            <div className="space-y-1">
+              <div className="font-extrabold text-base flex items-center gap-2">
+                <span className={`w-3 h-3 rounded-full ${isSystemLocked ? 'bg-rose-500 animate-ping' : 'bg-emerald-500'}`}></span>
+                {isSystemLocked ? '🚨 TRẠNG THÁI: HỆ THỐNG ĐANG BỊ KHÓA KHẨN CẤP (GLOBAL LOCKDOWN)' : '🟢 TRẠNG THÁI: HỆ THỐNG ĐANG HOẠT ĐỘNG BÌNH THƯỜNG'}
+              </div>
+              <p className="text-xs opacity-90 leading-relaxed">
+                {isSystemLocked
+                  ? `Hệ thống đã bị khóa bởi: ${lockedBy || 'Admin'}. Mọi màn hình thao tác của người dùng đã bị chặn.`
+                  : 'Tất cả các tầng và tời nâng đang vận hành bình thường. Bấm nút bên phải để kích hoạt khóa khẩn cấp toàn hệ thống lập tức.'}
+              </p>
+            </div>
+            <button
+              onClick={() => handleDirectLockdownToggle(!isSystemLocked)}
+              className={`px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer text-white flex items-center gap-2 shrink-0 ${isSystemLocked ? 'bg-emerald-600 hover:bg-emerald-500 active:scale-95' : 'bg-rose-600 hover:bg-rose-500 active:scale-95'}`}
+            >
+              {isSystemLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+              <span>{isSystemLocked ? 'Mở Khóa Khôi Phục Hệ Thống' : 'Kích Hoạt Khóa Khẩn Cấp Ngay'}</span>
+            </button>
           </div>
 
           {/* Explanation Box */}

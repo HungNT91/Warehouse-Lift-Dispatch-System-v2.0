@@ -356,7 +356,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
 
   const isMoving = lift.status === 'MOVING';
   const isWaitingPickup = lift.status === 'WAITING_PICKUP';
-  const isStoppedOrBlocked = lift.status === 'STOPPED' || lift.status === 'MAINTENANCE' || lift.status === 'OFFLINE';
+  const isStoppedOrBlocked = lift.status === 'STOPPED' || lift.status === 'MAINTENANCE' || lift.status === 'OFFLINE' || lift.status === 'LOCKED';
 
   const displayFloor = isMoving && lift.destination_floor
     ? Math.round(lift.current_floor + (lift.destination_floor - lift.current_floor) * (lift.progress / 100))

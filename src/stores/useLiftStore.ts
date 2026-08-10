@@ -247,12 +247,19 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
   addJob: async (jobData) => {
     const targetLift = get().lifts.find(l => l.id === jobData.lift_id || l.id === 'L1');
-    if (targetLift && targetLift.allowed_floors) {
-      if (jobData.target_floor && !targetLift.allowed_floors.includes(jobData.target_floor)) {
-        throw new Error(`Tầng ${jobData.target_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+    if (targetLift) {
+      if (['LOCKED', 'MAINTENANCE', 'OFFLINE', 'STOPPED'].includes(targetLift.status)) {
+        const statusText = targetLift.status === 'LOCKED' ? 'ĐÃ KHÓA' : 'DỪNG BẢO TRÌ/KHẨN CẤP';
+        throw new Error(`Tời ${targetLift.lift_number || 'được chọn'} hiện đang ở trạng thái ${statusText}! Không thể tiếp nhận đơn mới.`);
       }
-      if (jobData.source_floor && !targetLift.allowed_floors.includes(jobData.source_floor)) {
-        throw new Error(`Tầng ${jobData.source_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+
+      if (targetLift.allowed_floors) {
+        if (jobData.target_floor && !targetLift.allowed_floors.includes(jobData.target_floor)) {
+          throw new Error(`Tầng ${jobData.target_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+        }
+        if (jobData.source_floor && !targetLift.allowed_floors.includes(jobData.source_floor)) {
+          throw new Error(`Tầng ${jobData.source_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+        }
       }
     }
 
