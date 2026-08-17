@@ -417,6 +417,10 @@ export const db = {
         const supabaseUpdates = { ...cleanUpdates };
         delete supabaseUpdates.pickup_start_time;
         delete supabaseUpdates.allowed_floors;
+        delete supabaseUpdates.restricted_by_user_id;
+        delete supabaseUpdates.restricted_by_name;
+        delete supabaseUpdates.restricted_at;
+        delete supabaseUpdates.restriction_date;
 
         const { error } = await getSupabase().from('lifts').update({ ...supabaseUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);
         if (!error) {

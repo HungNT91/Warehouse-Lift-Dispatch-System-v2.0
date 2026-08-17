@@ -5,7 +5,7 @@ import { mockLifts, mockJobs, mockNotifications, mockActivities } from '../data/
 import { useTelegramStore } from './useTelegramStore';
 import { useAuthStore } from './useAuthStore';
 import { speakLiftArrival } from '../utils/audio';
-import { safeParseTimestamp } from '../utils/time';
+import { safeParseTimestamp, getLocalDateString, getEffectiveAllowedFloors } from '../utils/time';
 
 interface LiftState {
   lifts: Lift[];
@@ -17,6 +17,7 @@ interface LiftState {
   lastSyncedAt: Date | null;
   setSyncStatus: (status: 'connecting' | 'realtime' | 'polling' | 'offline', syncedAt?: Date) => void;
   updateLift: (liftId: string, updates: Partial<Lift>) => void;
+  checkAndResetExpiredRestrictions: () => void;
   updateJob: (jobId: string, updates: Partial<Job>) => void;
   addJob: (jobData: Partial<Job>) => Promise<Job>;
   cancelJob: (jobId: string) => Promise<void>;
@@ -77,6 +78,18 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     }
     if (updates.allowed_floors !== undefined) {
       dbUpdates.allowed_floors = updates.allowed_floors;
+    }
+    if (updates.restricted_by_user_id !== undefined) {
+      dbUpdates.restricted_by_user_id = updates.restricted_by_user_id;
+    }
+    if (updates.restricted_by_name !== undefined) {
+      dbUpdates.restricted_by_name = updates.restricted_by_name;
+    }
+    if (updates.restricted_at !== undefined) {
+      dbUpdates.restricted_at = updates.restricted_at;
+    }
+    if (updates.restriction_date !== undefined) {
+      dbUpdates.restriction_date = updates.restriction_date;
     }
 
     // Direct synchronization for uncollected timer (pickup_start_time)
@@ -186,6 +199,47 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     }));
   },
 
+  checkAndResetExpiredRestrictions: () => {
+    const today = getLocalDateString();
+    const currentLifts = get().lifts;
+    let hasChanges = false;
+    const updatedLifts = currentLifts.map((lift) => {
+      // Nếu thang đang bị giới hạn tầng (số tầng < 4) nhưng restriction_date đã qua ngày hôm nay -> tự động reset
+      if (lift.allowed_floors && lift.allowed_floors.length < 4 && lift.restriction_date && lift.restriction_date !== today) {
+        hasChanges = true;
+        const resetUpdates = {
+          allowed_floors: [1, 2, 3, 4],
+          restricted_by_user_id: null,
+          restricted_by_name: null,
+          restricted_at: null,
+          restriction_date: null
+        };
+        db.lifts.update(lift.id, resetUpdates).catch(console.error);
+
+        // Ghi log tự động reset hệ thống
+        db.activityLogs.add({
+          user_id: 'system',
+          action: 'RESET_FLOOR_RESTRICTION',
+          table_name: 'lifts',
+          record_id: lift.id,
+          description: `Hệ thống tự động giải phóng giới hạn tầng (sau 00:00) cho ${lift.lift_number}. Tời đã có thể di chuyển qua tất cả các tầng.`,
+          event_type: 'SYSTEM_EVENT'
+        }).catch(console.error);
+
+        return {
+          ...lift,
+          ...resetUpdates,
+          updated_at: new Date().toISOString()
+        };
+      }
+      return lift;
+    });
+
+    if (hasChanges) {
+      set({ lifts: updatedLifts });
+    }
+  },
+
   updateJob: async (jobId, updates) => {
     const targetJob = get().jobs.find(j => j.id === jobId || j.code === jobId);
     const code = targetJob?.code || jobId;
@@ -253,12 +307,13 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         throw new Error(`Tời ${targetLift.lift_number || 'được chọn'} hiện đang ở trạng thái ${statusText}! Không thể tiếp nhận đơn mới.`);
       }
 
-      if (targetLift.allowed_floors) {
-        if (jobData.target_floor && !targetLift.allowed_floors.includes(jobData.target_floor)) {
-          throw new Error(`Tầng ${jobData.target_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+      const effectiveAllowed = getEffectiveAllowedFloors(targetLift);
+      if (effectiveAllowed && effectiveAllowed.length < 4) {
+        if (jobData.target_floor && !effectiveAllowed.includes(jobData.target_floor)) {
+          throw new Error(`🚫 Tầng đích (Tầng ${jobData.target_floor}) đã bị Quản lý giới hạn hoạt động đối với tời này! Tời chỉ được di chuyển trong các tầng: ${effectiveAllowed.join(', ')}.`);
         }
-        if (jobData.source_floor && !targetLift.allowed_floors.includes(jobData.source_floor)) {
-          throw new Error(`Tầng ${jobData.source_floor} đã bị hạn chế (khóa) hoạt động đối với tời này!`);
+        if (jobData.source_floor && !effectiveAllowed.includes(jobData.source_floor)) {
+          throw new Error(`🚫 Tầng gửi (Tầng ${jobData.source_floor}) đã bị Quản lý giới hạn hoạt động đối với tời này! Tời chỉ được di chuyển trong các tầng: ${effectiveAllowed.join(', ')}.`);
         }
       }
     }
@@ -557,6 +612,10 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
         const normalizedLiftId = (d.id && !d.id.includes('-')) ? d.id : (d.lift_code || d.id);
 
+        const today = getLocalDateString();
+        const isExpired = Boolean(d.allowed_floors && d.allowed_floors.length < 4 && d.restriction_date && d.restriction_date !== today);
+        const effectiveAllowedFloors = isExpired ? [1, 2, 3, 4] : (d.allowed_floors || [1, 2, 3, 4]);
+
         return {
           id: normalizedLiftId,
           lift_number: d.lift_name || d.lift_code || d.id,
@@ -570,7 +629,11 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           pickup_start_time: pickupStartTime,
           last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
           progress: computedProgress,
-          allowed_floors: d.allowed_floors || [1, 2, 3, 4],
+          allowed_floors: effectiveAllowedFloors,
+          restricted_by_user_id: isExpired ? null : (d.restricted_by_user_id || null),
+          restricted_by_name: isExpired ? null : (d.restricted_by_name || null),
+          restricted_at: isExpired ? null : (d.restricted_at || null),
+          restriction_date: isExpired ? null : (d.restriction_date || null),
           created_at: new Date().toISOString(),
           updated_at: d.last_update || new Date().toISOString(),
         };

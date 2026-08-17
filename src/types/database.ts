@@ -58,8 +58,11 @@ export interface DbLift {
   note?: string | null; // text
   current_assignment_id?: string | null; // uuid
   lock_type?: string | null; // varchar
-  reservation_id?: string | null; // uuid
   allowed_floors?: number[]; // jsonb / array
+  restricted_by_user_id?: string | null;
+  restricted_by_name?: string | null;
+  restricted_at?: string | null;
+  restriction_date?: string | null;
   pickup_start_time?: number | string | null;
   source_floor?: number | string | null;
 }

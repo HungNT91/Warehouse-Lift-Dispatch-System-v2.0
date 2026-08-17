@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils";
 import { useAuthStore } from "../../stores/useAuthStore";
 import { Lock, Unlock, X, ArrowUp, ArrowDown, AlertCircle, AlertTriangle, Clock, RotateCcw, PackageCheck, Eye, Play, AlertOctagon } from "lucide-react";
 import { useLiftStore } from "../../stores/useLiftStore";
-import { safeParseTimestamp } from "../../utils/time";
+import { safeParseTimestamp, getEffectiveAllowedFloors, hasActiveFloorRestriction } from "../../utils/time";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { speakLiftArrival } from "../../utils/audio";
@@ -159,10 +159,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       toast.error(`Bạn được phân công ở Tầng ${assignment?.assigned_floor}. Không thể gửi hàng từ Tầng ${lift.current_floor}!`);
       return;
     }
-    const isAllowedSource = !lift.allowed_floors || lift.allowed_floors.includes(lift.current_floor);
-    const isAllowedTarget = !lift.allowed_floors || lift.allowed_floors.includes(targetFloor);
+    const effectiveAllowed = getEffectiveAllowedFloors(lift);
+    const isAllowedSource = effectiveAllowed.includes(lift.current_floor);
+    const isAllowedTarget = effectiveAllowed.includes(targetFloor);
     if (!isAllowedSource || !isAllowedTarget) {
-      toast.error(`🚫 Tầng hiện tại (${lift.current_floor}) hoặc tầng đích (${targetFloor}) đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này!`);;
+      toast.error(`🚫 Tầng gửi (T${lift.current_floor}) hoặc tầng đích (T${targetFloor}) đã bị Quản lý giới hạn hoạt động đối với tời này! (Tời chỉ phục vụ: ${effectiveAllowed.map(f => `T${f}`).join(', ')})`);
       return;
     }
     setShowFloorSelector(false);
@@ -261,10 +262,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
     if (!assignment?.assigned_floor) return;
     const targetFloor = assignment.assigned_floor;
 
-    const isAllowedTarget = !lift.allowed_floors || lift.allowed_floors.includes(targetFloor);
-    const isAllowedCurrent = !lift.allowed_floors || lift.allowed_floors.includes(lift.current_floor);
+    const effectiveAllowed = getEffectiveAllowedFloors(lift);
+    const isAllowedTarget = effectiveAllowed.includes(targetFloor);
+    const isAllowedCurrent = effectiveAllowed.includes(lift.current_floor);
     if (!isAllowedTarget || !isAllowedCurrent) {
-      toast.error(`🚫 Tầng hiện tại (${lift.current_floor}) hoặc tầng gọi về (${targetFloor}) đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này!`);
+      toast.error(`🚫 Tầng của bạn (T${targetFloor}) hoặc tầng hiện tại của tời (T${lift.current_floor}) đã bị Quản lý giới hạn hoạt động đối với tời này! (Tời chỉ phục vụ: ${effectiveAllowed.map(f => `T${f}`).join(', ')})`);
       return;
     }
     if (lift.status === 'WAITING_PICKUP') {
@@ -395,10 +397,19 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
               <span className="text-[9px] bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 px-1.5 py-0.2 rounded font-extrabold uppercase">CỦA BẠN</span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <span className={cn("px-2 py-0.5 text-[10px] font-bold rounded-full uppercase", theme.bg)}>
               {theme.label}
             </span>
+            {hasActiveFloorRestriction(lift) && (
+              <span 
+                className="px-2 py-0.5 text-[9px] font-black rounded-full uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1"
+                title={`Chỉ hoạt động ở Tầng ${getEffectiveAllowedFloors(lift).join(', ')} (Thiết lập bởi: ${lift.restricted_by_name || 'Quản lý'})`}
+              >
+                <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                {getEffectiveAllowedFloors(lift).map(f => `T${f}`).join(', ')}
+              </span>
+            )}
           </div>
         </div>
         <div className="text-right flex flex-col items-end">
@@ -525,7 +536,8 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
             </div>
             <div className="grid grid-cols-2 gap-2 w-full">
               {[1, 2, 3, 4].map(floor => {
-                const isAllowed = !lift.allowed_floors || lift.allowed_floors.includes(floor);
+                const effectiveAllowed = getEffectiveAllowedFloors(lift);
+                const isAllowed = effectiveAllowed.includes(floor);
                 const isDisabled = floor === lift.current_floor || !isAllowed;
                 return (
                   <button
@@ -541,10 +553,10 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                   >
                     Tầng {floor}
                     {!isAllowed && (
-                      <Lock className="w-3 h-3 absolute top-1 right-1 opacity-50" />
+                      <Lock className="w-3 h-3 absolute top-1 right-1 text-amber-400 opacity-80" />
                     )}
                   </button>
-                )
+                );
               })}
             </div>
           </div>
@@ -602,9 +614,10 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         ) : lift.status === 'AVAILABLE' ? (
           <>
             {(() => {
-              const isCurrentAllowed = !lift.allowed_floors || lift.allowed_floors.includes(lift.current_floor);
+              const effectiveAllowed = getEffectiveAllowedFloors(lift);
+              const isCurrentAllowed = effectiveAllowed.includes(lift.current_floor);
               const targetFloor = assignment?.assigned_floor;
-              const isTargetAllowed = !lift.allowed_floors || (targetFloor ? lift.allowed_floors.includes(targetFloor) : true);
+              const isTargetAllowed = targetFloor ? effectiveAllowed.includes(targetFloor) : true;
               const isSendDisabled = !isAssignedLift || !isAssignedFloor || !isCurrentAllowed;
               const isCallDisabled = !isAssignedLift || lift.current_floor === targetFloor || !isCurrentAllowed || !isTargetAllowed;
 
@@ -621,7 +634,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                         return;
                       }
                       if (!isCurrentAllowed) {
-                        toast.error(`🚫 Tầng hiện tại (${lift.current_floor}) đã bị Quản lý hạn chế (khóa) hoạt động đối với tời này!`);
+                        toast.error(`🚫 Tầng hiện tại (Tầng ${lift.current_floor}) đã bị Quản lý giới hạn hoạt động đối với tời này! (Tời chỉ phục vụ: ${effectiveAllowed.map(f => `T${f}`).join(', ')})`);
                         return;
                       }
                       setShowFloorSelector(true);
@@ -633,7 +646,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                         ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-800"
                         : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
                     )}
-                    title={!isAssignedFloor ? `Tời ở Tầng ${lift.current_floor} (Bạn ở Tầng ${assignment?.assigned_floor})` : (!isCurrentAllowed ? `Tầng ${lift.current_floor} đã bị hạn chế` : "Gửi hàng đến tầng khác")}
+                    title={
+                      !isCurrentAllowed
+                        ? `🚫 Tầng ${lift.current_floor} đã bị Quản lý giới hạn đối với tời này`
+                        : (!isAssignedFloor ? `Tời ở Tầng ${lift.current_floor} (Bạn ở Tầng ${assignment?.assigned_floor})` : "Gửi hàng đến tầng khác")
+                    }
                   >
                     GỬI HÀNG
                   </button>
@@ -646,7 +663,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                         ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed"
                         : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
                     )}
-                    title={!isCurrentAllowed || !isTargetAllowed ? "Tầng hiện tại hoặc tầng gọi về đã bị hạn chế bởi Quản lý" : `Gọi tời về Tầng ${targetFloor || 1}`}
+                    title={
+                      !isCurrentAllowed || !isTargetAllowed
+                        ? `🚫 Tầng ${!isTargetAllowed ? targetFloor : lift.current_floor} đã bị Quản lý giới hạn đối với tời này (Chỉ chạy: ${effectiveAllowed.join(', ')})`
+                        : (lift.current_floor === targetFloor ? "Tời đã ở tầng này" : `Gọi tời về Tầng ${targetFloor || 1}`)
+                    }
                   >
                     {lift.current_floor === targetFloor ? "Ở TẦNG NÀY" : `GỌI VỀ TẦNG ${targetFloor || 1}`}
                   </button>

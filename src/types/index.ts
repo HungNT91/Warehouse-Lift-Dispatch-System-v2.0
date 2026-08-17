@@ -38,6 +38,10 @@ export type Lift = {
   source_floor?: number | null;
   pickup_start_time?: number | null;
   allowed_floors?: number[];
+  restricted_by_user_id?: string | null;
+  restricted_by_name?: string | null;
+  restricted_at?: string | null;
+  restriction_date?: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -22,7 +22,7 @@ let _pollingTimer: ReturnType<typeof setInterval> | null = null;
 let _initialized = false;
 
 export function useRealtimeSync() {
-  const { fetchInitialData, setSyncStatus } = useLiftStore();
+  const { fetchInitialData, setSyncStatus, checkAndResetExpiredRestrictions } = useLiftStore();
   const { isAuthenticated } = useAuthStore();
   const refreshingRef = useRef(false);
 
@@ -31,6 +31,7 @@ export function useRealtimeSync() {
     refreshingRef.current = true;
     try {
       await fetchInitialData();
+      checkAndResetExpiredRestrictions();
       setSyncStatus(
         _channels.length > 0 ? 'realtime' : 'polling',
         new Date()
@@ -46,23 +47,11 @@ export function useRealtimeSync() {
     if (!isAuthenticated || _initialized) return;
     _initialized = true;
 
-    // Direct storage event listener for cross-tab synchronization in local storage mode
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'liftflow_db_store_v2') {
-        refresh();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-
     if (!isSupabaseConfigured()) {
-      console.info('[RealtimeSync] Supabase chưa cấu hình → chỉ Polling & Storage Event.');
+      console.info('[RealtimeSync] Supabase chưa cấu hình → chỉ Polling 60s.');
       setSyncStatus('polling');
       _startPolling();
-      return () => {
-        window.removeEventListener('storage', handleStorageChange);
-        _stopPolling();
-        _initialized = false;
-      };
+      return;
     }
 
     setSyncStatus('connecting');
@@ -70,7 +59,6 @@ export function useRealtimeSync() {
     _startPolling(); // luôn giữ polling làm dự phòng
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
       _stopRealtimeSubscriptions();
       _stopPolling();
       _initialized = false;

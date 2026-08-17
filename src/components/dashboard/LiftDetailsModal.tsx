@@ -2,7 +2,7 @@ import React from 'react';
 import { Lift, Job } from '../../types';
 import { useLiftStore } from '../../stores/useLiftStore';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { isSameLift } from '../../utils/time';
+import { isSameLift, getEffectiveAllowedFloors, hasActiveFloorRestriction } from '../../utils/time';
 import {
   X,
   Play,
@@ -146,6 +146,49 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Floor Restriction Info Box */}
+          {(() => {
+            const effectiveFloors = getEffectiveAllowedFloors(lift);
+            const isRestricted = hasActiveFloorRestriction(lift);
+
+            return (
+              <div className={cn(
+                "p-3.5 rounded-2xl border flex items-start gap-3 text-xs",
+                isRestricted 
+                  ? "bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200"
+                  : "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300"
+              )}>
+                <div className={cn(
+                  "p-2 rounded-xl shrink-0",
+                  isRestricted ? "bg-amber-100 dark:bg-amber-900/60 text-amber-600" : "bg-slate-200 dark:bg-slate-700 text-slate-500"
+                )}>
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold uppercase tracking-wide">
+                      {isRestricted ? 'Giới Hạn Tầng Hoạt Động Trong Ngày' : 'Phạm Vi Di Chuyển Của Tời'}
+                    </span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-black/10 dark:bg-white/10 uppercase">
+                      {isRestricted ? `Chỉ Tầng ${effectiveFloors.join(', ')}` : 'Tất cả tầng (1-4)'}
+                    </span>
+                  </div>
+                  {isRestricted ? (
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                      Thiết lập bởi Quản lý <strong>{lift.restricted_by_name || 'Khác'}</strong>
+                      {lift.restricted_at && ` vào lúc ${new Date(lift.restricted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}.
+                      Thang chỉ được phép di chuyển và nhận đơn giữa các tầng <strong>{effectiveFloors.map(f => `Tầng ${f}`).join(' và ')}</strong>. Hệ thống sẽ tự động khôi phục di chuyển tất cả tầng sau <strong>00:00 đêm</strong>.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      Tời đang được phép vận chuyển và gọi thang tự do tại tất cả các tầng (Tầng 1, 2, 3, 4).
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Progress Bar if MOVING */}
           {lift.status === 'MOVING' && (
