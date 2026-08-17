@@ -5,7 +5,7 @@ import { mockLifts, mockJobs, mockNotifications, mockActivities } from '../data/
 import { useTelegramStore } from './useTelegramStore';
 import { useAuthStore } from './useAuthStore';
 import { speakLiftArrival } from '../utils/audio';
-import { safeParseTimestamp, getLocalDateString, getEffectiveAllowedFloors } from '../utils/time';
+import { isSameLift, safeParseTimestamp, getLocalDateString, getEffectiveAllowedFloors } from '../utils/time';
 import { getStoredRestrictionForLift, saveStoredFloorRestriction } from '../utils/floorRestrictions';
 
 interface LiftState {
