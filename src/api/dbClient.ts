@@ -16,6 +16,7 @@ import {
   DbUserDevice,
   DbNotification
 } from '../types/database';
+import { getStoredRestrictionForLift, saveStoredFloorRestriction } from '../utils/floorRestrictions';
 
 // Helper to check if Supabase is initialized
 export const isSupabaseConfigured = (): boolean => {
@@ -371,12 +372,29 @@ export const db = {
   // 6. Lifts
   lifts: {
     async getAll(): Promise<DbLift[]> {
-      if (!isSupabaseConfigured()) return mockDbData.lifts;
+      const enrichWithFloorRestrictions = (items: DbLift[]): DbLift[] => {
+        return items.map(lift => {
+          const stored = getStoredRestrictionForLift(lift.id, lift.lift_code, lift.lift_name);
+          const localItem = mockDbData.lifts.find(l => l.id === lift.id || l.lift_code === lift.lift_code || (l.lift_name && lift.lift_name && l.lift_name === lift.lift_name));
+          return {
+            ...lift,
+            allowed_floors: stored?.allowed_floors || localItem?.allowed_floors || lift.allowed_floors || [1, 2, 3, 4],
+            restricted_by_user_id: stored?.restricted_by_user_id || localItem?.restricted_by_user_id || lift.restricted_by_user_id || null,
+            restricted_by_name: stored?.restricted_by_name || localItem?.restricted_by_name || lift.restricted_by_name || null,
+            restricted_at: stored?.restricted_at || localItem?.restricted_at || lift.restricted_at || null,
+            restriction_date: stored?.restriction_date || localItem?.restriction_date || lift.restriction_date || null,
+            pickup_start_time: lift.pickup_start_time || localItem?.pickup_start_time || null
+          };
+        });
+      };
+
+      if (!isSupabaseConfigured()) return enrichWithFloorRestrictions(mockDbData.lifts);
       try {
         const { data, error } = await getSupabase().from('lifts').select('*');
         if (!error && data && data.length > 0) {
-          cachedLifts = data;
-          return data;
+          const enriched = enrichWithFloorRestrictions(data);
+          cachedLifts = enriched;
+          return enriched;
         }
         // Auto-seed default lifts in Supabase if empty
         const seedLifts: DbLift[] = [
@@ -389,11 +407,12 @@ export const db = {
         try {
           await getSupabase().from('lifts').insert(seedLifts);
         } catch { }
-        cachedLifts = seedLifts;
-        return seedLifts;
+        const enrichedSeed = enrichWithFloorRestrictions(seedLifts);
+        cachedLifts = enrichedSeed;
+        return enrichedSeed;
       } catch (err) {
         console.warn('Exception fetching lifts:', err);
-        return [];
+        return enrichWithFloorRestrictions(mockDbData.lifts);
       }
     },
     async update(id: string, updates: Partial<DbLift>): Promise<boolean> {
@@ -410,6 +429,26 @@ export const db = {
             // Remove non-UUID current_job field before calling Supabase to prevent Postgres 22P02 invalid UUID error
             delete cleanUpdates.current_job;
           }
+        }
+      }
+
+      // Save floor restriction persistently
+      if (cleanUpdates.allowed_floors !== undefined) {
+        saveStoredFloorRestriction(id, {
+          allowed_floors: cleanUpdates.allowed_floors,
+          restricted_by_user_id: cleanUpdates.restricted_by_user_id,
+          restricted_by_name: cleanUpdates.restricted_by_name,
+          restricted_at: cleanUpdates.restricted_at,
+          restriction_date: cleanUpdates.restriction_date
+        });
+        if (realLiftId !== id) {
+          saveStoredFloorRestriction(realLiftId, {
+            allowed_floors: cleanUpdates.allowed_floors,
+            restricted_by_user_id: cleanUpdates.restricted_by_user_id,
+            restricted_by_name: cleanUpdates.restricted_by_name,
+            restricted_at: cleanUpdates.restricted_at,
+            restriction_date: cleanUpdates.restriction_date
+          });
         }
       }
 

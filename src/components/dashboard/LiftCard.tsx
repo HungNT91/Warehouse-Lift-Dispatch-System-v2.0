@@ -615,11 +615,12 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
           <>
             {(() => {
               const effectiveAllowed = getEffectiveAllowedFloors(lift);
+              const userFloor = assignment?.assigned_floor;
               const isCurrentAllowed = effectiveAllowed.includes(lift.current_floor);
-              const targetFloor = assignment?.assigned_floor;
-              const isTargetAllowed = targetFloor ? effectiveAllowed.includes(targetFloor) : true;
+              const isUserFloorAllowed = userFloor ? effectiveAllowed.includes(userFloor) : isCurrentAllowed;
+              
               const isSendDisabled = !isAssignedLift || !isAssignedFloor || !isCurrentAllowed;
-              const isCallDisabled = !isAssignedLift || lift.current_floor === targetFloor || !isCurrentAllowed || !isTargetAllowed;
+              const isCallDisabled = !isAssignedLift || (userFloor ? lift.current_floor === userFloor : false) || !isCurrentAllowed || !isUserFloorAllowed;
 
               return (
                 <>
@@ -630,7 +631,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                         return;
                       }
                       if (!isAssignedFloor) {
-                        toast.error(`Tời đang ở Tầng ${lift.current_floor}. Bạn được phân công ở Tầng ${assignment?.assigned_floor}, chỉ được gửi hàng khi tời ở tầng của bạn!`);
+                        toast.error(`Tời đang ở Tầng ${lift.current_floor}. Bạn được phân công ở Tầng ${userFloor}, chỉ được gửi hàng khi tời ở tầng của bạn!`);
                         return;
                       }
                       if (!isCurrentAllowed) {
@@ -648,11 +649,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                     )}
                     title={
                       !isCurrentAllowed
-                        ? `🚫 Tầng ${lift.current_floor} đã bị Quản lý giới hạn đối với tời này`
-                        : (!isAssignedFloor ? `Tời ở Tầng ${lift.current_floor} (Bạn ở Tầng ${assignment?.assigned_floor})` : "Gửi hàng đến tầng khác")
+                        ? `🚫 Tầng ${lift.current_floor} đã bị Quản lý giới hạn đối với tời này (Chỉ chạy: ${effectiveAllowed.map(f => `T${f}`).join(', ')})`
+                        : (!isAssignedFloor ? `Tời ở Tầng ${lift.current_floor} (Bạn ở Tầng ${userFloor})` : "Gửi hàng đến tầng khác")
                     }
                   >
-                    GỬI HÀNG
+                    {!isCurrentAllowed ? `T${lift.current_floor} BỊ KHÓA` : 'GỬI HÀNG'}
                   </button>
                   <button
                     onClick={handleCallLift}
@@ -664,12 +665,16 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                         : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
                     )}
                     title={
-                      !isCurrentAllowed || !isTargetAllowed
-                        ? `🚫 Tầng ${!isTargetAllowed ? targetFloor : lift.current_floor} đã bị Quản lý giới hạn đối với tời này (Chỉ chạy: ${effectiveAllowed.join(', ')})`
-                        : (lift.current_floor === targetFloor ? "Tời đã ở tầng này" : `Gọi tời về Tầng ${targetFloor || 1}`)
+                      userFloor && !isUserFloorAllowed
+                        ? `🚫 Tầng ${userFloor} của bạn đã bị Quản lý giới hạn đối với tời này (Chỉ chạy: ${effectiveAllowed.map(f => `T${f}`).join(', ')})`
+                        : !isCurrentAllowed
+                          ? `🚫 Tầng ${lift.current_floor} hiện tại đã bị Quản lý giới hạn đối với tời này`
+                          : (lift.current_floor === userFloor ? "Tời đã ở tầng này" : `Gọi tời về Tầng ${userFloor || 1}`)
                     }
                   >
-                    {lift.current_floor === targetFloor ? "Ở TẦNG NÀY" : `GỌI VỀ TẦNG ${targetFloor || 1}`}
+                    {userFloor && !isUserFloorAllowed
+                      ? `T${userFloor} BỊ KHÓA`
+                      : (userFloor && lift.current_floor === userFloor ? "Ở TẦNG NÀY" : `GỌI VỀ TẦNG ${userFloor || 1}`)}
                   </button>
                 </>
               );

@@ -6,6 +6,7 @@ import { useTelegramStore } from './useTelegramStore';
 import { useAuthStore } from './useAuthStore';
 import { speakLiftArrival } from '../utils/audio';
 import { safeParseTimestamp, getLocalDateString, getEffectiveAllowedFloors } from '../utils/time';
+import { getStoredRestrictionForLift, saveStoredFloorRestriction } from '../utils/floorRestrictions';
 
 interface LiftState {
   lifts: Lift[];
@@ -78,6 +79,22 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     }
     if (updates.allowed_floors !== undefined) {
       dbUpdates.allowed_floors = updates.allowed_floors;
+      saveStoredFloorRestriction(liftId, {
+        allowed_floors: updates.allowed_floors,
+        restricted_by_user_id: updates.restricted_by_user_id,
+        restricted_by_name: updates.restricted_by_name,
+        restricted_at: updates.restricted_at,
+        restriction_date: updates.restriction_date
+      });
+      if (prevLift && prevLift.id !== liftId) {
+        saveStoredFloorRestriction(prevLift.id, {
+          allowed_floors: updates.allowed_floors,
+          restricted_by_user_id: updates.restricted_by_user_id,
+          restricted_by_name: updates.restricted_by_name,
+          restricted_at: updates.restricted_at,
+          restriction_date: updates.restriction_date
+        });
+      }
     }
     if (updates.restricted_by_user_id !== undefined) {
       dbUpdates.restricted_by_user_id = updates.restricted_by_user_id;
@@ -194,7 +211,9 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
     set((state) => ({
       lifts: state.lifts.map((lift) =>
-        lift.id === liftId ? { ...lift, ...updates, updated_at: new Date().toISOString(), last_update: 'Vừa xong' } : lift
+        (lift.id === liftId || lift.id === prevLift?.id || isSameLift(lift.id, liftId) || isSameLift(lift.lift_number, liftId))
+          ? { ...lift, ...updates, updated_at: new Date().toISOString(), last_update: 'Vừa xong' }
+          : lift
       )
     }));
   },
@@ -612,9 +631,16 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
         const normalizedLiftId = (d.id && !d.id.includes('-')) ? d.id : (d.lift_code || d.id);
 
+        const storedRestr = getStoredRestrictionForLift(d.id, d.lift_code, d.lift_name);
+        const rawAllowed = (d.allowed_floors && d.allowed_floors.length < 4) ? d.allowed_floors : (storedRestr?.allowed_floors || d.allowed_floors || [1, 2, 3, 4]);
+        const rawRestrictedByUserId = d.restricted_by_user_id || storedRestr?.restricted_by_user_id || null;
+        const rawRestrictedByName = d.restricted_by_name || storedRestr?.restricted_by_name || null;
+        const rawRestrictedAt = d.restricted_at || storedRestr?.restricted_at || null;
+        const rawRestrictionDate = d.restriction_date || storedRestr?.restriction_date || null;
+
         const today = getLocalDateString();
-        const isExpired = Boolean(d.allowed_floors && d.allowed_floors.length < 4 && d.restriction_date && d.restriction_date !== today);
-        const effectiveAllowedFloors = isExpired ? [1, 2, 3, 4] : (d.allowed_floors || [1, 2, 3, 4]);
+        const isExpired = Boolean(rawAllowed && rawAllowed.length < 4 && rawRestrictionDate && rawRestrictionDate !== today);
+        const effectiveAllowedFloors = isExpired ? [1, 2, 3, 4] : rawAllowed;
 
         return {
           id: normalizedLiftId,
@@ -630,10 +656,10 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
           progress: computedProgress,
           allowed_floors: effectiveAllowedFloors,
-          restricted_by_user_id: isExpired ? null : (d.restricted_by_user_id || null),
-          restricted_by_name: isExpired ? null : (d.restricted_by_name || null),
-          restricted_at: isExpired ? null : (d.restricted_at || null),
-          restriction_date: isExpired ? null : (d.restriction_date || null),
+          restricted_by_user_id: isExpired ? null : rawRestrictedByUserId,
+          restricted_by_name: isExpired ? null : rawRestrictedByName,
+          restricted_at: isExpired ? null : rawRestrictedAt,
+          restriction_date: isExpired ? null : rawRestrictionDate,
           created_at: new Date().toISOString(),
           updated_at: d.last_update || new Date().toISOString(),
         };
