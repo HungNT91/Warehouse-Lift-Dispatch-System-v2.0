@@ -319,7 +319,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
   },
 
   addJob: async (jobData) => {
-    const targetLift = get().lifts.find(l => l.id === jobData.lift_id || l.id === 'L1');
+    const targetLift = get().lifts.find(l => isSameLift(l.id, jobData.lift_id) || isSameLift(l.lift_number, jobData.lift_id) || l.id === jobData.lift_id);
     if (targetLift) {
       if (['MAINTENANCE', 'OFFLINE', 'STOPPED'].includes(targetLift.status)) {
         const statusText = 'DỪNG BẢO TRÌ/KHẨN CẤP';

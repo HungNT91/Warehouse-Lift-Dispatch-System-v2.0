@@ -455,13 +455,22 @@ export const db = {
       if (isSupabaseConfigured()) {
         const supabaseUpdates = { ...cleanUpdates };
         delete supabaseUpdates.pickup_start_time;
-        delete supabaseUpdates.allowed_floors;
-        delete supabaseUpdates.restricted_by_user_id;
-        delete supabaseUpdates.restricted_by_name;
-        delete supabaseUpdates.restricted_at;
-        delete supabaseUpdates.restriction_date;
 
-        const { error } = await getSupabase().from('lifts').update({ ...supabaseUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);
+        let { error } = await getSupabase().from('lifts').update({ ...supabaseUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);
+        
+        // If error might be due to unmigrated columns, fallback without custom columns
+        if (error) {
+          console.warn('Supabase error updating lift with full columns, trying fallback:', error.message);
+          const fallbackUpdates = { ...supabaseUpdates };
+          delete fallbackUpdates.allowed_floors;
+          delete fallbackUpdates.restricted_by_user_id;
+          delete fallbackUpdates.restricted_by_name;
+          delete fallbackUpdates.restricted_at;
+          delete fallbackUpdates.restriction_date;
+          const retry = await getSupabase().from('lifts').update({ ...fallbackUpdates, last_update: new Date().toISOString() }).eq('id', realLiftId);
+          error = retry.error;
+        }
+
         if (!error) {
           const idx = mockDbData.lifts.findIndex(l => l.id === id || l.id === realLiftId || l.lift_code === id);
           if (idx !== -1) mockDbData.lifts[idx] = { ...mockDbData.lifts[idx], ...cleanUpdates, last_update: new Date().toISOString() };
