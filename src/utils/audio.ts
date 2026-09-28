@@ -94,7 +94,7 @@ export function speakText(text: string) {
  */
 export function speakLiftArrival(liftName: string, floor: number) {
   const formattedLift = liftName.replace(/^Lift\s*/i, 'Thang P').replace(/^Tời\s*/i, 'Thang P');
-  const message = `Thông báo, ${formattedLift} đã vận chuyển hàng đến Tầng ${floor}. Mời nhân viên kiểm tra kéo hàng!`;
+  const message = `Thông báo, ${formattedLift} đã vận chuyển hàng đến Tầng ${floor}. Yêu cầu nhân viên điều phối kho Tầng ${floor} kiểm tra kéo hàng!`;
   speakText(message);
 }
 
@@ -103,7 +103,7 @@ export function speakLiftArrival(liftName: string, floor: number) {
  */
 export function speakUncollectedWarning(liftName: string, floor: number, minutes: number = 3) {
   const formattedLift = liftName.replace(/^Lift\s*/i, 'Thang P').replace(/^Tời\s*/i, 'Thang P');
-  const message = `Cảnh báo! ${formattedLift} tại Tầng ${floor} chưa được kéo hàng quá ${minutes} phút. Yêu cầu bộ phận kho Tầng ${floor} khẩn trương kéo hàng!`;
+  const message = `Cảnh báo! ${formattedLift} tại Tầng ${floor} chưa được kéo hàng quá ${minutes} phút. Yêu cầu điều phối kho Tầng ${floor} khẩn trương kéo hàng!`;
   speakText(message);
 }
 

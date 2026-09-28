@@ -149,7 +149,7 @@ export function TelegramCenter() {
   const [targetGroup, setTargetGroup] = useState<string>('DEFAULT');
   const [targetLift, setTargetLift] = useState<string>('ALL');
   const [templateType, setTemplateType] = useState<string>('CUSTOM');
-  const [messageText, setMessageText] = useState<string>('🚨 <b>CẢNH BÁO TỒN ĐỌNG HÀNG</b>\nThang P3 tại Tầng 4 có đơn hàng chờ lấy quá 3 phút! Đội kho Tầng 4 vui lòng kiểm tra và kéo hàng ra khỏi thang gấp.');
+  const [messageText, setMessageText] = useState<string>('<b>CẢNH BÁO TỒN ĐỌNG HÀNG</b>\nThang P3 tại Tầng 4 có đơn hàng chờ lấy quá 3 phút! Đội kho Tầng 4 vui lòng kiểm tra và kéo hàng ra khỏi thang gấp.');
   const [enableTts, setEnableTts] = useState<boolean>(true);
   const [isSending, setIsSending] = useState<boolean>(false);
 
@@ -258,38 +258,38 @@ export function TelegramCenter() {
     switch (type) {
       case 'UNCOLLECTED':
         setMessageText(
-          `🚨 <b>CẢNH BÁO TỒN ĐỌNG HÀNG (>3 Phút)</b>\n` +
-          `📍 <b>Vị trí:</b> ${liftName} - Tầng ${floorNum}\n` +
-          `📦 <b>Mã đơn:</b> #TR-8990 - Pallet Hàng\n` +
-          `⏱️ <b>Thời gian chờ:</b> 4 phút 25 giây\n` +
-          `👉 <i>Yêu cầu Đội Kho Tầng ${floorNum} khẩn trương dỡ hàng!</i>`
+          `<b>CẢNH BÁO TỒN ĐỌNG HÀNG (>3 Phút)</b>\n` +
+          `<b>Vị trí:</b> ${liftName} - Tầng ${floorNum}\n` +
+          `<b>Mã đơn:</b> #TR-8990 - Pallet Hàng\n` +
+          `<b>Thời gian chờ:</b> 4 phút 25 giây\n` +
+          `<i>Yêu cầu Đội Kho Tầng ${floorNum} khẩn trương dỡ hàng!</i>`
         );
         break;
       case 'LIFT_ARRIVAL':
         const fromFloor = floorNum === 1 ? 3 : 1;
         setMessageText(
-          `🔔 <b>CHUÔNG TỜI CẬP BẾN TẦNG</b>\n` +
-          `🚚 <b>${liftName}</b> đã vận chuyển hàng đến <b>Tầng ${floorNum}</b> (từ Tầng ${fromFloor})\n` +
-          `📦 <b>Số lượng:</b> Pallet Hàng\n` +
-          `✅ <i>Trạng thái: Kính mời nhân viên Tầng ${floorNum} nhận hàng và dỡ kiện!</i>`
+          `<b>CHUÔNG TỜI CẬP BẾN TẦNG</b>\n` +
+          `<b>${liftName}</b> đã vận chuyển hàng đến <b>Tầng ${floorNum}</b> (từ Tầng ${fromFloor})\n` +
+          `<b>Số lượng:</b> Pallet Hàng\n` +
+          `<i>Trạng thái: Kính mời nhân viên Tầng ${floorNum} nhận hàng và dỡ kiện!</i>`
         );
         break;
       case 'MAINTENANCE':
         setMessageText(
-          `⚠️ <b>CẢNH BÁO BẢO TRÌ THIẾT BỊ</b>\n` +
-          `🛠️ <b>Thiết bị:</b> ${liftName} (${selectedLiftObj?.lift_code || selectedLiftObj?.id || 'LIFT'})\n` +
-          `🔒 <b>Trạng thái:</b> Tạm dừng hoạt động tại Tầng ${floorNum} để bảo dưỡng định kỳ\n` +
-          `⏱️ <b>Thời gian dự kiến:</b> 30 phút. Xin vui lòng sử dụng các tời còn lại.`
+          `<b>CẢNH BÁO BẢO TRÌ THIẾT BỊ</b>\n` +
+          `<b>Thiết bị:</b> ${liftName} (${selectedLiftObj?.lift_code || selectedLiftObj?.id || 'LIFT'})\n` +
+          `<b>Trạng thái:</b> Tạm dừng hoạt động tại Tầng ${floorNum} để bảo dưỡng định kỳ\n` +
+          `<b>Thời gian dự kiến:</b> 30 phút. Xin vui lòng sử dụng các tời còn lại.`
         );
         break;
       case 'URGENT_JOB':
         const destF = floorNum === 4 ? 1 : 4;
         setMessageText(
-          `🔴 <b>ĐƠN VẬN CHUYỂN HỎA TỐC MỚI</b>\n` +
-          `📄 <b>Chỉ định:</b> ${liftName}\n` +
-          `🔄 <b>Lộ trình:</b> Tầng ${floorNum} ➔ Tầng ${destF}\n` +
-          `👤 <b>Người điều phối:</b> ${user?.full_name || 'Quản lý kho'}\n` +
-          `⚡ <i>Ưu tiên ${liftName} vận hành ngay lập tức!</i>`
+          `<b>ĐƠN VẬN CHUYỂN HỎA TỐC MỚI</b>\n` +
+          `<b>Chỉ định:</b> ${liftName}\n` +
+          `<b>Lộ trình:</b> Tầng ${floorNum} ➔ Tầng ${destF}\n` +
+          `<b>Người điều phối:</b> ${user?.full_name || 'Quản lý kho'}\n` +
+          `<i>Ưu tiên ${liftName} vận hành ngay lập tức!</i>`
         );
         break;
       default:
@@ -364,7 +364,7 @@ export function TelegramCenter() {
         try {
           senderSessionId = sessionStorage.getItem('wlds_session_id') || `sess_${Date.now()}`;
           sessionStorage.setItem('wlds_session_id', senderSessionId);
-        } catch {}
+        } catch { }
       }
 
       // 1. Phát qua BroadcastChannel để các tab khác trên cùng trình duyệt phát giọng đọc tức thì
@@ -382,7 +382,7 @@ export function TelegramCenter() {
           });
           // Giữ channel mở 2 giây thay vì close ngay lập tức để message kịp truyền qua các tab
           setTimeout(() => {
-            try { bc.close(); } catch {}
+            try { bc.close(); } catch { }
           }, 2000);
         } catch (e) {
           console.warn('BroadcastChannel error:', e);
