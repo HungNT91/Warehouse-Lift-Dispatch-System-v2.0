@@ -14,6 +14,7 @@ import { speakText } from '../utils/audio';
 
 export function TelegramCenter() {
   const { user } = useAuthStore();
+  const { lifts } = useLiftStore();
   const {
     botToken,
     botName,
@@ -146,6 +147,7 @@ export function TelegramCenter() {
 
   // Manual Dispatch State
   const [targetGroup, setTargetGroup] = useState<string>('DEFAULT');
+  const [targetLift, setTargetLift] = useState<string>('ALL');
   const [templateType, setTemplateType] = useState<string>('CUSTOM');
   const [messageText, setMessageText] = useState<string>('🚨 <b>CẢNH BÁO TỒN ĐỌNG HÀNG</b>\nThang P3 tại Tầng 4 có đơn hàng chờ lấy quá 3 phút! Đội kho Tầng 4 vui lòng kiểm tra và kéo hàng ra khỏi thang gấp.');
   const [enableTts, setEnableTts] = useState<boolean>(true);
@@ -240,41 +242,54 @@ export function TelegramCenter() {
   };
 
   // Handle Preset Template Switch
-  const handleSelectTemplate = (type: string) => {
+  const handleSelectTemplate = (type: string, liftId = targetLift, group = targetGroup) => {
     setTemplateType(type);
+    const selectedLiftObj = lifts.find(l => l.id === liftId);
+    const liftName = selectedLiftObj ? selectedLiftObj.lift_number.replace('Lift ', 'Tời ') : 'Tời 01';
+    let floorNum = 1;
+    if (group.startsWith('FLOOR_')) {
+      floorNum = parseInt(group.replace('FLOOR_', ''), 10) || 1;
+    } else if (selectedLiftObj?.current_floor) {
+      floorNum = selectedLiftObj.current_floor;
+    } else {
+      floorNum = 4;
+    }
+
     switch (type) {
       case 'UNCOLLECTED':
         setMessageText(
           `🚨 <b>CẢNH BÁO TỒN ĐỌNG HÀNG (>3 Phút)</b>\n` +
-          `📍 <b>Vị trí:</b> Thang P1 - Tầng 4\n` +
+          `📍 <b>Vị trí:</b> ${liftName} - Tầng ${floorNum}\n` +
           `📦 <b>Mã đơn:</b> #TR-8990 - Pallet Hàng\n` +
           `⏱️ <b>Thời gian chờ:</b> 4 phút 25 giây\n` +
-          `👉 <i>Yêu cầu Đội Kho Tầng 4 khẩn trương dỡ hàng!</i>`
+          `👉 <i>Yêu cầu Đội Kho Tầng ${floorNum} khẩn trương dỡ hàng!</i>`
         );
         break;
       case 'LIFT_ARRIVAL':
+        const fromFloor = floorNum === 1 ? 3 : 1;
         setMessageText(
           `🔔 <b>CHUÔNG TỜI CẬP BẾN TẦNG</b>\n` +
-          `🚚 <b>Tời 02</b> đã vận chuyển thành công từ <b>Tầng 3 ➔ Tầng 1</b>\n` +
+          `🚚 <b>${liftName}</b> đã vận chuyển hàng đến <b>Tầng ${floorNum}</b> (từ Tầng ${fromFloor})\n` +
           `📦 <b>Số lượng:</b> Pallet Hàng\n` +
-          `✅ <i>Trạng thái: Sẵn sàng kéo hàng tại Tầng 1.</i>`
+          `✅ <i>Trạng thái: Kính mời nhân viên Tầng ${floorNum} nhận hàng và dỡ kiện!</i>`
         );
         break;
       case 'MAINTENANCE':
         setMessageText(
           `⚠️ <b>CẢNH BÁO BẢO TRÌ THIẾT BỊ</b>\n` +
-          `🛠️ <b>Thiết bị:</b> Thang P5 (Lift 05)\n` +
-          `🔒 <b>Trạng thái:</b> Tạm dừng hoạt động để bảo dưỡng định kỳ\n` +
-          `⏱️ <b>Thời gian dự kiến:</b> 30 phút`
+          `🛠️ <b>Thiết bị:</b> ${liftName} (${selectedLiftObj?.lift_code || selectedLiftObj?.id || 'LIFT'})\n` +
+          `🔒 <b>Trạng thái:</b> Tạm dừng hoạt động tại Tầng ${floorNum} để bảo dưỡng định kỳ\n` +
+          `⏱️ <b>Thời gian dự kiến:</b> 30 phút. Xin vui lòng sử dụng các tời còn lại.`
         );
         break;
       case 'URGENT_JOB':
+        const destF = floorNum === 4 ? 1 : 4;
         setMessageText(
           `🔴 <b>ĐƠN VẬN CHUYỂN HỎA TỐC MỚI</b>\n` +
-          `📄 <b>Mã đơn:</b> #TR-8994\n` +
-          `🔄 <b>Lộ trình:</b> Tầng 1 ➔ Tầng 4\n` +
-          `👤 <b>Người tạo:</b> Nguyễn Văn Hùng\n` +
-          `⚡ <i>Ưu tiên tời vận hành ngay lập tức!</i>`
+          `📄 <b>Chỉ định:</b> ${liftName}\n` +
+          `🔄 <b>Lộ trình:</b> Tầng ${floorNum} ➔ Tầng ${destF}\n` +
+          `👤 <b>Người điều phối:</b> ${user?.full_name || 'Quản lý kho'}\n` +
+          `⚡ <i>Ưu tiên ${liftName} vận hành ngay lập tức!</i>`
         );
         break;
       default:
@@ -327,11 +342,30 @@ export function TelegramCenter() {
     // Nếu bật tính năng đọc giọng nói (TTS): phát thanh tới thiết bị của các tài khoản được phân công làm việc ở tầng đó
     if (enableTts) {
       const senderUserId = user?.id || 'u1';
-      const notifTitle = targetFloor > 0
-        ? `🔊 Thông báo phát thanh Tầng ${targetFloor}`
-        : `🔊 Thông báo phát thanh Kênh Chung`;
+      const selectedLiftObj = lifts.find(l => l.id === targetLift);
+      const liftLabel = selectedLiftObj ? selectedLiftObj.lift_number.replace('Lift ', 'Tời ') : '';
 
-      const formattedMessage = `[AUDIO_DISPATCH|F${targetFloor}|SENDER:${senderUserId}] ${messageText}`;
+      let notifTitle = '🔊 Thông báo phát thanh';
+      if (liftLabel && targetFloor > 0) {
+        notifTitle = `🔊 Phát thanh: ${liftLabel} - Tầng ${targetFloor}`;
+      } else if (liftLabel) {
+        notifTitle = `🔊 Phát thanh: ${liftLabel}`;
+      } else if (targetFloor > 0) {
+        notifTitle = `🔊 Phát thanh: Tầng ${targetFloor}`;
+      } else {
+        notifTitle = `🔊 Phát thanh: Kênh Chung Kho`;
+      }
+
+      // Metadata string format: [AUDIO_DISPATCH|F{targetFloor}|LIFT:{targetLift}|SENDER:{senderUserId}]
+      const formattedMessage = `[AUDIO_DISPATCH|F${targetFloor}|LIFT:${targetLift}|SENDER:${senderUserId}] ${messageText}`;
+
+      let senderSessionId = '';
+      if (typeof window !== 'undefined') {
+        try {
+          senderSessionId = sessionStorage.getItem('wlds_session_id') || `sess_${Date.now()}`;
+          sessionStorage.setItem('wlds_session_id', senderSessionId);
+        } catch {}
+      }
 
       // 1. Phát qua BroadcastChannel để các tab khác trên cùng trình duyệt phát giọng đọc tức thì
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -340,11 +374,16 @@ export function TelegramCenter() {
           bc.postMessage({
             id: `audio-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
             targetFloor,
+            targetLift,
             senderId: senderUserId,
+            senderSessionId,
             text: messageText,
             timestamp: Date.now()
           });
-          bc.close();
+          // Giữ channel mở 2 giây thay vì close ngay lập tức để message kịp truyền qua các tab
+          setTimeout(() => {
+            try { bc.close(); } catch {}
+          }, 2000);
         } catch (e) {
           console.warn('BroadcastChannel error:', e);
         }
@@ -352,7 +391,7 @@ export function TelegramCenter() {
 
       // 2. Lưu Notification vào DB để truyền đồng bộ tới tất cả thiết bị tài khoản khác ở tầng đó via Realtime/Polling
       await db.notifications.create({
-        notification_type: `AUDIO_DISPATCH_F${targetFloor}`,
+        notification_type: `AUDIO_DISPATCH_F${targetFloor}_${targetLift}`,
         title: notifTitle,
         message: formattedMessage,
         status: 'SENT'
@@ -368,6 +407,7 @@ export function TelegramCenter() {
         is_read: false,
         created_at: new Date().toISOString(),
         target_floor: targetFloor,
+        target_lift: targetLift,
         sender_id: senderUserId
       };
 
@@ -380,8 +420,9 @@ export function TelegramCenter() {
 
     if (res.success) {
       const floorTargetDesc = targetFloor > 0 ? `Tầng ${targetFloor}` : 'Kênh Chung';
+      const liftDesc = targetLift !== 'ALL' ? ` (${lifts.find(l => l.id === targetLift)?.lift_number.replace('Lift ', 'Tời ') || targetLift})` : '';
       toast.success(
-        `Đã phát tin tới Telegram (${targetLabel}) ${enableTts ? `và phát thanh giọng đọc TTS tới ${floorTargetDesc} ` : ''}thành công!`
+        `Đã phát tin tới Telegram (${targetLabel}) ${enableTts ? `và phát thanh giọng đọc TTS tới ${floorTargetDesc}${liftDesc} ` : ''}thành công!`
       );
     } else {
       toast.error(`Thất bại: ${res.error}`);

@@ -742,9 +742,10 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     }
 
     try {
-      const [dbLifts, dbJobs] = await Promise.all([
+      const [dbLifts, dbJobs, dbNotifs] = await Promise.all([
         db.lifts.getAll(),
-        db.transportJobs.getAll()
+        db.transportJobs.getAll(),
+        db.notifications.getAll()
       ]);
 
       const { mergedLifts, mappedJobs } = processLiftsAndJobs(
@@ -757,9 +758,21 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         _cachedFloorMap
       );
 
+      const mappedNotifs: AppNotification[] = dbNotifs.map(n => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        severity: (n.notification_type && (n.notification_type.includes('WARNING') || n.notification_type.includes('URGENT'))) ? 'warning' : 'info',
+        category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'telegram' : 'job',
+        is_read: n.status === 'READ',
+        created_at: n.created_at,
+        link_id: n.job_id
+      }));
+
       set(state => ({
         lifts: mergedLifts.length > 0 ? mergedLifts : state.lifts,
-        jobs: mappedJobs
+        jobs: mappedJobs,
+        notifications: mappedNotifs.length > 0 ? mappedNotifs : state.notifications
       }));
     } catch (e) {
       console.warn('[LiftStore] fetchDynamicData gặp lỗi (sẽ thử lại ở chu kỳ kế tiếp):', e);
