@@ -27,7 +27,218 @@ interface LiftState {
   clearNotifications: () => void;
   addActivity: (activity: Omit<ActivityLog, 'id' | 'created_at'>) => void;
   fetchInitialData: () => Promise<void>;
+  fetchDynamicData: () => Promise<void>;
   simulateRealtime: () => void;
+}
+
+// Module-level caches for static reference data (rarely changed: floors, users, lift_status)
+let _cachedStatusList: any[] = [];
+let _cachedUsers: any[] = [];
+let _cachedFloors: any[] = [];
+let _cachedStatusCodeMap: Record<number, string> = {};
+let _cachedUserMap: Record<string, string> = {};
+let _cachedFloorMap: Record<string, number> = {};
+
+// Helper: parseFloor using floorMap
+const parseFloorWithMap = (floor: string | number | null | undefined, floorMap: Record<string, number>): number => {
+  if (typeof floor === 'number') return floor;
+  if (!floor) return 1;
+  const str = String(floor);
+  if (floorMap[str]) return floorMap[str];
+  if (str.startsWith('f')) {
+    const num = parseInt(str.replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(num) && num > 0) return num;
+  }
+  const fallbackNum = parseInt(str.replace(/[^0-9]/g, ''), 10);
+  if (!isNaN(fallbackNum) && fallbackNum > 0 && fallbackNum <= 10) return fallbackNum;
+  return 1;
+};
+
+// Helper: checkSameLift
+const checkSameLift = (val1: any, val2: any): boolean => {
+  if (!val1 || !val2) return false;
+  if (val1 === val2) return true;
+  const s1 = String(val1).toLowerCase().trim();
+  const s2 = String(val2).toLowerCase().trim();
+  if (s1 === s2) return true;
+  const num1 = s1.replace(/[^0-9]/g, '');
+  const num2 = s2.replace(/[^0-9]/g, '');
+  if (num1 && num2 && num1 === num2 && num1.length <= 2) return true;
+  return false;
+};
+
+// Shared helper: map and merge lifts + jobs
+function processLiftsAndJobs(
+  dbLifts: any[],
+  dbJobs: any[],
+  currentLifts: Lift[],
+  currentJobs: Job[],
+  statusCodeMap: Record<number, string>,
+  userMap: Record<string, string>,
+  floorMap: Record<string, number>
+): { mergedLifts: Lift[]; mappedJobs: Job[] } {
+  const mappedLifts: Lift[] = dbLifts.map(d => {
+    // Fallback robust active job matching
+    const activeJob = (d.current_job
+      ? (dbJobs.find(j => j.id === d.current_job || j.job_no === d.current_job || (j as any).code === d.current_job) ||
+        currentJobs.find(j => j.id === d.current_job || j.code === d.current_job))
+      : null) ||
+      dbJobs.find(j =>
+        (checkSameLift(j.lift_id, d.id) || checkSameLift(j.lift_id, d.lift_code) || checkSameLift(j.lift_id, d.lift_name)) &&
+        ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
+      ) ||
+      currentJobs.find(j =>
+        (checkSameLift(j.lift_id, d.id) || checkSameLift(j.lift_id, d.lift_code) || checkSameLift(j.lift_id, d.lift_name)) &&
+        ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
+      ) || null;
+
+    const destFloor = activeJob ? parseFloorWithMap((activeJob as any).to_floor || (activeJob as any).target_floor, floorMap) : null;
+    const srcFloor = activeJob ? parseFloorWithMap((activeJob as any).from_floor || (activeJob as any).source_floor, floorMap) : null;
+    let liftStatus = (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE';
+
+    // Direct status sync with active job status if active job exists
+    if (activeJob && ['MOVING', 'WAITING_PICKUP'].includes((activeJob as any).status)) {
+      liftStatus = (activeJob as any).status;
+    }
+
+    let pickupStartTime: number | null = null;
+    if (liftStatus === 'WAITING_PICKUP') {
+      if (d.pickup_start_time) {
+        pickupStartTime = safeParseTimestamp(d.pickup_start_time);
+      } else if (d.last_update) {
+        pickupStartTime = safeParseTimestamp(d.last_update);
+      } else {
+        pickupStartTime = Date.now();
+      }
+      const diffMs = Date.now() - pickupStartTime;
+      if (diffMs < 0 || diffMs > 2 * 3600 * 1000) {
+        pickupStartTime = Date.now();
+      }
+    }
+
+    // Calculate progress dynamically based on time elapsed
+    let computedProgress = 0;
+    if (liftStatus === 'MOVING') {
+      const startTime = safeParseTimestamp(d.last_update);
+      const travelDist = (destFloor && srcFloor) ? Math.abs(destFloor - srcFloor) : 1;
+      const totalSecs = travelDist * 30; // 30s per floor
+      const elapsedSecs = Math.max(0, (Date.now() - startTime) / 1000);
+      const calcProg = Math.floor((elapsedSecs / totalSecs) * 100);
+      computedProgress = isNaN(calcProg) ? 0 : Math.min(99, Math.max(0, calcProg));
+    } else if (liftStatus === 'WAITING_PICKUP') {
+      computedProgress = 100;
+    }
+
+    const normalizedLiftId = (d.id && !d.id.includes('-')) ? d.id : (d.lift_code || d.id);
+
+    const storedRestr = getStoredRestrictionForLift(d.id, d.lift_code, d.lift_name);
+    const rawAllowed = (d.allowed_floors && d.allowed_floors.length < 4) ? d.allowed_floors : (storedRestr?.allowed_floors || d.allowed_floors || [1, 2, 3, 4]);
+    const rawRestrictedByUserId = d.restricted_by_user_id || storedRestr?.restricted_by_user_id || null;
+    const rawRestrictedByName = d.restricted_by_name || storedRestr?.restricted_by_name || null;
+    const rawRestrictedAt = d.restricted_at || storedRestr?.restricted_at || null;
+    const rawRestrictionDate = d.restriction_date || storedRestr?.restriction_date || null;
+
+    const today = getLocalDateString();
+    const isExpired = Boolean(rawAllowed && rawAllowed.length < 4 && rawRestrictionDate && rawRestrictionDate !== today);
+    const effectiveAllowedFloors = isExpired ? [1, 2, 3, 4] : rawAllowed;
+
+    return {
+      id: normalizedLiftId,
+      lift_number: d.lift_name || d.lift_code || d.id,
+      current_floor: parseFloorWithMap(d.current_floor, floorMap),
+      destination_floor: destFloor,
+      source_floor: srcFloor,
+      status: liftStatus,
+      operator: d.current_job ? userMap['u3'] || 'Phạm Lan Trang' : null,
+      current_job_id: activeJob ? (activeJob.id || (activeJob as any).job_no) : (d.current_job || null),
+      elapsed_time: null,
+      pickup_start_time: pickupStartTime,
+      last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
+      progress: computedProgress,
+      allowed_floors: effectiveAllowedFloors,
+      restricted_by_user_id: isExpired ? null : rawRestrictedByUserId,
+      restricted_by_name: isExpired ? null : rawRestrictedByName,
+      restricted_at: isExpired ? null : rawRestrictedAt,
+      restriction_date: isExpired ? null : rawRestrictionDate,
+      created_at: new Date().toISOString(),
+      updated_at: d.last_update || new Date().toISOString(),
+    };
+  });
+
+  const mappedJobs: Job[] = dbJobs.map(j => ({
+    id: j.id,
+    code: j.job_no || j.id,
+    lift_id: j.lift_id || 'L1',
+    lift_number: dbLifts.find(l => l.id === j.lift_id)?.lift_name || j.lift_id || 'Thang P1',
+    created_by: j.sender_id || 'u1',
+    creator_name: (j.sender_id && userMap[j.sender_id]) ? userMap[j.sender_id] : 'Nhân viên kho',
+    source_floor: parseFloorWithMap(j.from_floor, floorMap),
+    target_floor: parseFloorWithMap(j.to_floor, floorMap),
+    status: (j.status as any) || 'CREATED',
+    priority: 'NORMAL',
+    item_type: j.remark || 'Pallet Hàng',
+    quantity: 1,
+    notes: j.remark || '',
+    created_at: j.created_at,
+    updated_at: j.created_at
+  }));
+
+  const mergedLifts: Lift[] = mappedLifts.map(dbLift => {
+    const localLift = currentLifts.find(l =>
+      l.id === dbLift.id ||
+      l.lift_number === dbLift.lift_number ||
+      l.id === dbLift.lift_number ||
+      checkSameLift(l.id, dbLift.id)
+    );
+
+    if (!localLift) return dbLift;
+
+    const resolvedAllowedFloors = localLift.allowed_floors ?? dbLift.allowed_floors ?? [1, 2, 3, 4];
+
+    if (localLift.status === 'MOVING') {
+      const newStatus = dbLift.status === 'WAITING_PICKUP' ? 'WAITING_PICKUP' : 'MOVING';
+      const validLocalProg = typeof localLift.progress === 'number' && !isNaN(localLift.progress) ? localLift.progress : 0;
+      return {
+        ...dbLift,
+        status: newStatus,
+        progress: newStatus === 'MOVING' ? validLocalProg : 100,
+        elapsed_time: localLift.elapsed_time,
+        pickup_start_time: dbLift.pickup_start_time ?? localLift.pickup_start_time,
+        destination_floor: dbLift.destination_floor ?? localLift.destination_floor,
+        source_floor: dbLift.source_floor ?? localLift.source_floor,
+        current_job_id: dbLift.current_job_id ?? localLift.current_job_id,
+        operator: dbLift.operator ?? localLift.operator,
+        last_update: dbLift.last_update ?? localLift.last_update,
+        allowed_floors: resolvedAllowedFloors,
+      };
+    }
+
+    if (localLift.status === 'WAITING_PICKUP') {
+      const hasWaitingJob = mappedJobs.some(j => checkSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP');
+
+      const newStatus = (dbLift.status === 'AVAILABLE' && !hasWaitingJob) ? 'AVAILABLE' : 'WAITING_PICKUP';
+      const validLocalStart = localLift.pickup_start_time && (Date.now() - localLift.pickup_start_time >= 0 && Date.now() - localLift.pickup_start_time < 2 * 3600 * 1000)
+        ? localLift.pickup_start_time
+        : null;
+      return {
+        ...dbLift,
+        status: newStatus,
+        pickup_start_time: newStatus === 'WAITING_PICKUP' ? (validLocalStart ?? dbLift.pickup_start_time ?? Date.now()) : null,
+        destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : null,
+        source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : null,
+        current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,
+        operator: newStatus === 'WAITING_PICKUP' ? (dbLift.operator ?? localLift.operator) : null,
+        allowed_floors: resolvedAllowedFloors,
+      };
+    }
+
+    return {
+      ...dbLift,
+      allowed_floors: resolvedAllowedFloors,
+    };
+  });
+
+  return { mergedLifts, mappedJobs };
 }
 
 export const useLiftStore = create<LiftState>((set, get) => ({
@@ -522,6 +733,40 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     }));
   },
 
+  // Dynamic polling: chỉ fetch 2 bảng thường xuyên biến động (lifts, transport_jobs)
+  fetchDynamicData: async () => {
+    // Nếu chưa từng có cache dữ liệu tĩnh (floors, users, statuses), chạy fetchInitialData một lần
+    if (_cachedFloors.length === 0 || _cachedUsers.length === 0) {
+      await get().fetchInitialData();
+      return;
+    }
+
+    try {
+      const [dbLifts, dbJobs] = await Promise.all([
+        db.lifts.getAll(),
+        db.transportJobs.getAll()
+      ]);
+
+      const { mergedLifts, mappedJobs } = processLiftsAndJobs(
+        dbLifts,
+        dbJobs,
+        get().lifts,
+        get().jobs,
+        _cachedStatusCodeMap,
+        _cachedUserMap,
+        _cachedFloorMap
+      );
+
+      set(state => ({
+        lifts: mergedLifts.length > 0 ? mergedLifts : state.lifts,
+        jobs: mappedJobs
+      }));
+    } catch (e) {
+      console.warn('[LiftStore] fetchDynamicData gặp lỗi (sẽ thử lại ở chu kỳ kế tiếp):', e);
+    }
+  },
+
+  // Full fetch: tải toàn bộ 7 bảng và lưu cache dữ liệu tĩnh
   fetchInitialData: async () => {
     set({ isLoading: true });
     try {
@@ -535,153 +780,35 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         db.floors.getAll()
       ]);
 
-      const statusCodeMap: Record<number, string> = {};
+      // Lưu cache dữ liệu tĩnh
+      _cachedStatusList = dbStatusList;
+      _cachedUsers = dbUsers;
+      _cachedFloors = dbFloors;
+
+      _cachedStatusCodeMap = {};
       dbStatusList.forEach(s => {
-        statusCodeMap[s.id] = s.status_code;
+        _cachedStatusCodeMap[s.id] = s.status_code;
       });
 
-      const userMap: Record<string, string> = {};
+      _cachedUserMap = {};
       dbUsers.forEach(u => {
-        userMap[u.id] = u.full_name;
+        _cachedUserMap[u.id] = u.full_name;
       });
 
-      const floorMap: Record<string, number> = {};
+      _cachedFloorMap = {};
       dbFloors.forEach(f => {
-        floorMap[f.id] = f.floor_no;
+        _cachedFloorMap[f.id] = f.floor_no;
       });
 
-      const isSameLift = (val1: any, val2: any): boolean => {
-        if (!val1 || !val2) return false;
-        if (val1 === val2) return true;
-        const s1 = String(val1).toLowerCase().trim();
-        const s2 = String(val2).toLowerCase().trim();
-        if (s1 === s2) return true;
-        const num1 = s1.replace(/[^0-9]/g, '');
-        const num2 = s2.replace(/[^0-9]/g, '');
-        if (num1 && num2 && num1 === num2 && num1.length <= 2) return true;
-        return false;
-      };
-
-      // Map lifts
-      const parseFloor = (floor: string | number | null | undefined): number => {
-        if (typeof floor === 'number') return floor;
-        if (!floor) return 1;
-        const str = String(floor);
-        if (floorMap[str]) return floorMap[str];
-        if (str.startsWith('f')) {
-          const num = parseInt(str.replace(/[^0-9]/g, ''), 10);
-          if (!isNaN(num) && num > 0) return num;
-        }
-        const fallbackNum = parseInt(str.replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(fallbackNum) && fallbackNum > 0 && fallbackNum <= 10) return fallbackNum;
-        return 1;
-      };
-
-      const mappedLifts: Lift[] = dbLifts.map(d => {
-        // Fallback robust active job matching
-        const activeJob = (d.current_job
-          ? (dbJobs.find(j => j.id === d.current_job || j.job_no === d.current_job || (j as any).code === d.current_job) ||
-            get().jobs.find(j => j.id === d.current_job || j.code === d.current_job))
-          : null) ||
-          dbJobs.find(j =>
-            (isSameLift(j.lift_id, d.id) || isSameLift(j.lift_id, d.lift_code) || isSameLift(j.lift_id, d.lift_name)) &&
-            ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
-          ) ||
-          get().jobs.find(j =>
-            (isSameLift(j.lift_id, d.id) || isSameLift(j.lift_id, d.lift_code) || isSameLift(j.lift_id, d.lift_name)) &&
-            ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
-          ) || null;
-
-        const destFloor = activeJob ? parseFloor((activeJob as any).to_floor || (activeJob as any).target_floor) : null;
-        const srcFloor = activeJob ? parseFloor((activeJob as any).from_floor || (activeJob as any).source_floor) : null;
-        let liftStatus = (statusCodeMap[d.status_id || 1] as any) || 'AVAILABLE';
-
-        // Direct status sync with active job status if active job exists
-        if (activeJob && ['MOVING', 'WAITING_PICKUP'].includes((activeJob as any).status)) {
-          liftStatus = (activeJob as any).status;
-        }
-
-        let pickupStartTime: number | null = null;
-        if (liftStatus === 'WAITING_PICKUP') {
-          if (d.pickup_start_time) {
-            pickupStartTime = safeParseTimestamp(d.pickup_start_time);
-          } else if (d.last_update) {
-            pickupStartTime = safeParseTimestamp(d.last_update);
-          } else {
-            pickupStartTime = Date.now();
-          }
-          const diffMs = Date.now() - pickupStartTime;
-          if (diffMs < 0 || diffMs > 2 * 3600 * 1000) {
-            pickupStartTime = Date.now();
-          }
-        }
-
-        // Calculate progress dynamically based on time elapsed
-        let computedProgress = 0;
-        if (liftStatus === 'MOVING') {
-          const startTime = safeParseTimestamp(d.last_update);
-          const travelDist = (destFloor && srcFloor) ? Math.abs(destFloor - srcFloor) : 1;
-          const totalSecs = travelDist * 30; // 30s per floor
-          const elapsedSecs = Math.max(0, (Date.now() - startTime) / 1000);
-          const calcProg = Math.floor((elapsedSecs / totalSecs) * 100);
-          computedProgress = isNaN(calcProg) ? 0 : Math.min(99, Math.max(0, calcProg));
-        } else if (liftStatus === 'WAITING_PICKUP') {
-          computedProgress = 100;
-        }
-
-        const normalizedLiftId = (d.id && !d.id.includes('-')) ? d.id : (d.lift_code || d.id);
-
-        const storedRestr = getStoredRestrictionForLift(d.id, d.lift_code, d.lift_name);
-        const rawAllowed = (d.allowed_floors && d.allowed_floors.length < 4) ? d.allowed_floors : (storedRestr?.allowed_floors || d.allowed_floors || [1, 2, 3, 4]);
-        const rawRestrictedByUserId = d.restricted_by_user_id || storedRestr?.restricted_by_user_id || null;
-        const rawRestrictedByName = d.restricted_by_name || storedRestr?.restricted_by_name || null;
-        const rawRestrictedAt = d.restricted_at || storedRestr?.restricted_at || null;
-        const rawRestrictionDate = d.restriction_date || storedRestr?.restriction_date || null;
-
-        const today = getLocalDateString();
-        const isExpired = Boolean(rawAllowed && rawAllowed.length < 4 && rawRestrictionDate && rawRestrictionDate !== today);
-        const effectiveAllowedFloors = isExpired ? [1, 2, 3, 4] : rawAllowed;
-
-        return {
-          id: normalizedLiftId,
-          lift_number: d.lift_name || d.lift_code || d.id,
-          current_floor: parseFloor(d.current_floor),
-          destination_floor: destFloor,
-          source_floor: srcFloor,
-          status: liftStatus,
-          operator: d.current_job ? userMap['u3'] || 'Phạm Lan Trang' : null,
-          current_job_id: activeJob ? (activeJob.id || (activeJob as any).job_no) : (d.current_job || null),
-          elapsed_time: null,
-          pickup_start_time: pickupStartTime,
-          last_update: d.last_update ? new Date(d.last_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong',
-          progress: computedProgress,
-          allowed_floors: effectiveAllowedFloors,
-          restricted_by_user_id: isExpired ? null : rawRestrictedByUserId,
-          restricted_by_name: isExpired ? null : rawRestrictedByName,
-          restricted_at: isExpired ? null : rawRestrictedAt,
-          restriction_date: isExpired ? null : rawRestrictionDate,
-          created_at: new Date().toISOString(),
-          updated_at: d.last_update || new Date().toISOString(),
-        };
-      });
-      // Map jobs
-      const mappedJobs: Job[] = dbJobs.map(j => ({
-        id: j.id,
-        code: j.job_no || j.id,
-        lift_id: j.lift_id || 'L1',
-        lift_number: dbLifts.find(l => l.id === j.lift_id)?.lift_name || j.lift_id || 'Thang P1',
-        created_by: j.sender_id || 'u1',
-        creator_name: (j.sender_id && userMap[j.sender_id]) ? userMap[j.sender_id] : 'Nhân viên kho',
-        source_floor: parseFloor(j.from_floor),
-        target_floor: parseFloor(j.to_floor),
-        status: (j.status as any) || 'CREATED',
-        priority: 'NORMAL',
-        item_type: j.remark || 'Pallet Hàng',
-        quantity: 1,
-        notes: j.remark || '',
-        created_at: j.created_at,
-        updated_at: j.created_at
-      }));
+      const { mergedLifts, mappedJobs } = processLiftsAndJobs(
+        dbLifts,
+        dbJobs,
+        get().lifts,
+        get().jobs,
+        _cachedStatusCodeMap,
+        _cachedUserMap,
+        _cachedFloorMap
+      );
 
       // Map notifications
       const mappedNotifs: AppNotification[] = dbNotifs.map(n => ({
@@ -700,8 +827,8 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         // Resolve user display name
         let displayUserName = 'Hệ Thống';
         if (a.user_id && a.user_id !== 'system') {
-          if (userMap[a.user_id]) {
-            displayUserName = userMap[a.user_id];
+          if (_cachedUserMap[a.user_id]) {
+            displayUserName = _cachedUserMap[a.user_id];
           } else {
             const foundUser = dbUsers.find(u => u.id === a.user_id || u.employee_code === a.user_id);
             if (foundUser) displayUserName = foundUser.full_name;
@@ -759,69 +886,6 @@ export const useLiftStore = create<LiftState>((set, get) => ({
           entity_id: displayEntityId,
           description: cleanDescription,
           created_at: a.created_at ? new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong'
-        };
-      });
-
-      // ─────────────────────────────────────────────────────────────────────
-      // Smart-merge: giữ lại các trường ephemeral (như progress, elapsed_time)
-      // CHỈ KHI cả DB và Local có CÙNG trạng thái hoạt động (MOVING hoặc WAITING_PICKUP).
-      // Nếu DB đã đổi trạng thái (ví dụ từ WAITING_PICKUP sang AVAILABLE do tầng B bấm xác nhận),
-      // bắt buộc phải cập nhật ngay trạng thái từ DB để thiết bị của nhân viên A không bị kẹt
-      // ─────────────────────────────────────────────────────────────────────
-      const currentLifts = get().lifts;
-      const mergedLifts: Lift[] = mappedLifts.map(dbLift => {
-        const localLift = currentLifts.find(l =>
-          l.id === dbLift.id ||
-          l.lift_number === dbLift.lift_number ||
-          l.id === dbLift.lift_number ||
-          isSameLift(l.id, dbLift.id)
-        );
-
-        if (!localLift) return dbLift;
-
-        const resolvedAllowedFloors = localLift.allowed_floors ?? dbLift.allowed_floors ?? [1, 2, 3, 4];
-
-        if (localLift.status === 'MOVING') {
-          const newStatus = dbLift.status === 'WAITING_PICKUP' ? 'WAITING_PICKUP' : 'MOVING';
-          const validLocalProg = typeof localLift.progress === 'number' && !isNaN(localLift.progress) ? localLift.progress : 0;
-          return {
-            ...dbLift,
-            status: newStatus,
-            progress: newStatus === 'MOVING' ? validLocalProg : 100,
-            elapsed_time: localLift.elapsed_time,
-            pickup_start_time: dbLift.pickup_start_time ?? localLift.pickup_start_time,
-            destination_floor: dbLift.destination_floor ?? localLift.destination_floor,
-            source_floor: dbLift.source_floor ?? localLift.source_floor,
-            current_job_id: dbLift.current_job_id ?? localLift.current_job_id,
-            operator: dbLift.operator ?? localLift.operator,
-            last_update: dbLift.last_update ?? localLift.last_update,
-            allowed_floors: resolvedAllowedFloors,
-          };
-        }
-
-        if (localLift.status === 'WAITING_PICKUP') {
-          // Check if there is still an active job for this lift with WAITING_PICKUP
-          const hasWaitingJob = mappedJobs.some(j => isSameLift(j.lift_id, dbLift.id) && j.status === 'WAITING_PICKUP');
-
-          const newStatus = (dbLift.status === 'AVAILABLE' && !hasWaitingJob) ? 'AVAILABLE' : 'WAITING_PICKUP';
-          const validLocalStart = localLift.pickup_start_time && (Date.now() - localLift.pickup_start_time >= 0 && Date.now() - localLift.pickup_start_time < 2 * 3600 * 1000)
-            ? localLift.pickup_start_time
-            : null;
-          return {
-            ...dbLift,
-            status: newStatus,
-            pickup_start_time: newStatus === 'WAITING_PICKUP' ? (validLocalStart ?? dbLift.pickup_start_time ?? Date.now()) : null,
-            destination_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.destination_floor ?? localLift.destination_floor) : null,
-            source_floor: newStatus === 'WAITING_PICKUP' ? (dbLift.source_floor ?? localLift.source_floor) : null,
-            current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,
-            operator: newStatus === 'WAITING_PICKUP' ? (dbLift.operator ?? localLift.operator) : null,
-            allowed_floors: resolvedAllowedFloors,
-          };
-        }
-
-        return {
-          ...dbLift,
-          allowed_floors: resolvedAllowedFloors,
         };
       });
 

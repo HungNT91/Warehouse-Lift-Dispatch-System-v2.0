@@ -14,7 +14,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { isSupabaseConfigured } from '../api/dbClient';
 import { getSupabase } from '../api/supabase';
 
-const POLL_INTERVAL_MS = 10_000; // 10 giây
+const POLL_INTERVAL_MS = 5_000; // 5 giây
 
 /** Module-level singletons — tránh đăng ký trùng khi component re-render */
 let _channels: any[] = [];
@@ -22,15 +22,19 @@ let _pollingTimer: ReturnType<typeof setInterval> | null = null;
 let _initialized = false;
 
 export function useRealtimeSync() {
-  const { fetchInitialData, setSyncStatus, checkAndResetExpiredRestrictions } = useLiftStore();
+  const { fetchInitialData, fetchDynamicData, setSyncStatus, checkAndResetExpiredRestrictions } = useLiftStore();
   const { isAuthenticated } = useAuthStore();
   const refreshingRef = useRef(false);
 
-  const refresh = async () => {
+  const refresh = async (onlyDynamic = false) => {
     if (refreshingRef.current) return; // chặn gọi song song
     refreshingRef.current = true;
     try {
-      await fetchInitialData();
+      if (onlyDynamic) {
+        await fetchDynamicData();
+      } else {
+        await fetchInitialData();
+      }
       checkAndResetExpiredRestrictions();
       setSyncStatus(
         _channels.length > 0 ? 'realtime' : 'polling',
@@ -48,7 +52,7 @@ export function useRealtimeSync() {
     _initialized = true;
 
     if (!isSupabaseConfigured()) {
-      console.info('[RealtimeSync] Supabase chưa cấu hình → chỉ Polling 60s.');
+      console.info('[RealtimeSync] Supabase chưa cấu hình → chỉ Polling 5s.');
       setSyncStatus('polling');
       _startPolling();
       return;
@@ -89,7 +93,10 @@ export function useRealtimeSync() {
           .on(
             'postgres_changes' as any,
             { event, schema: 'public', table: name },
-            () => { refresh(); }
+            () => {
+              const onlyDynamic = (name === 'lifts' || name === 'transport_jobs');
+              refresh(onlyDynamic);
+            }
           )
           .subscribe((status: string) => {
             if (status === 'SUBSCRIBED') {
@@ -122,12 +129,12 @@ export function useRealtimeSync() {
   }
 
   // ─────────────────────────────────────────────
-  // LAYER 2: Polling Fallback (60 giây)
+  // LAYER 2: Polling Fallback (5 giây - Tối ưu Lifts & Jobs)
   // ─────────────────────────────────────────────
   function _startPolling() {
     if (_pollingTimer) return;
-    _pollingTimer = setInterval(() => { refresh(); }, POLL_INTERVAL_MS);
-    console.info(`[RealtimeSync] 🔄 Polling khởi động — mỗi ${POLL_INTERVAL_MS / 1000}s.`);
+    _pollingTimer = setInterval(() => { refresh(true); }, POLL_INTERVAL_MS);
+    console.info(`[RealtimeSync] 🔄 Polling tối ưu khởi động — mỗi ${POLL_INTERVAL_MS / 1000}s (chỉ quét Lifts & Jobs).`);
   }
 
   function _stopPolling() {
