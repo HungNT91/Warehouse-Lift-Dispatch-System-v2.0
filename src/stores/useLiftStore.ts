@@ -144,6 +144,7 @@ function processLiftsAndJobs(
 
     return {
       id: normalizedLiftId,
+      lift_code: d.lift_code || null,
       lift_number: d.lift_name || d.lift_code || d.id,
       current_floor: parseFloorWithMap(d.current_floor, floorMap),
       destination_floor: destFloor,

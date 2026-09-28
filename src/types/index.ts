@@ -26,6 +26,7 @@ export type LiftStatus =
 
 export type Lift = {
   id: string;
+  lift_code?: string | null;
   lift_number: string;
   current_floor: number;
   destination_floor: number | null;
