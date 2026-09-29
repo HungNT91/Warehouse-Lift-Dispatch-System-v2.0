@@ -197,31 +197,47 @@ function processLiftsAndJobs(
     if (!localLift) return dbLift;
 
     // Xác định cấu hình giới hạn tầng chính xác nhất:
-    // 1. Ưu tiên dbLift nếu đang có giới hạn hợp lệ (< 4 tầng)
-    // 2. Kế đến giữ lại localLift nếu localLift đang có giới hạn hợp lệ trong ngày
-    // 3. Mặc định [1, 2, 3, 4]
-    const dbHasRestr = Boolean(dbLift.allowed_floors && dbLift.allowed_floors.length < 4 && (!dbLift.restriction_date || dbLift.restriction_date === today));
-    const localHasRestr = Boolean(localLift.allowed_floors && localLift.allowed_floors.length < 4 && (!localLift.restriction_date || localLift.restriction_date === today));
+    // 1. localStorage là nguồn chân lý — nếu không có giới hạn trong localStorage → coi như không giới hạn
+    // 2. Ưu tiên dbLift nếu đang có giới hạn hợp lệ (< 4 tầng và đúng ngày hôm nay)
+    // 3. Kế đến giữ lại localLift nếu localLift đang có giới hạn hợp lệ trong ngày (phải có restriction_date)
+    // 4. Mặc định [1, 2, 3, 4]
+    const storedRestr = getStoredRestrictionForLift(dbLift.id, dbLift.lift_code, dbLift.lift_number);
+    const storedHasRestr = Boolean(storedRestr?.allowed_floors && storedRestr.allowed_floors.length < 4);
 
-    const resolvedAllowedFloors = dbHasRestr
-      ? dbLift.allowed_floors!
-      : (localHasRestr ? localLift.allowed_floors! : [1, 2, 3, 4]);
+    const dbHasRestr = Boolean(dbLift.allowed_floors && dbLift.allowed_floors.length < 4 && dbLift.restriction_date === today);
+    // localHasRestr: phải có restriction_date hợp lệ (không chấp nhận null/undefined)
+    const localHasRestr = Boolean(localLift.allowed_floors && localLift.allowed_floors.length < 4 && localLift.restriction_date && localLift.restriction_date === today);
 
-    const resolvedRestrictedByUserId = dbHasRestr
-      ? dbLift.restricted_by_user_id
-      : (localHasRestr ? localLift.restricted_by_user_id : null);
+    // Nếu localStorage đã xóa giới hạn → không cho phép localLift khôi phục lại giới hạn cũ
+    const resolvedAllowedFloors = storedHasRestr
+      ? storedRestr!.allowed_floors
+      : dbHasRestr
+        ? dbLift.allowed_floors!
+        : (localHasRestr ? localLift.allowed_floors! : [1, 2, 3, 4]);
 
-    const resolvedRestrictedByName = dbHasRestr
-      ? dbLift.restricted_by_name
-      : (localHasRestr ? localLift.restricted_by_name : null);
+    const resolvedRestrictedByUserId = storedHasRestr
+      ? (storedRestr!.restricted_by_user_id || null)
+      : dbHasRestr
+        ? dbLift.restricted_by_user_id
+        : (localHasRestr ? localLift.restricted_by_user_id : null);
 
-    const resolvedRestrictedAt = dbHasRestr
-      ? dbLift.restricted_at
-      : (localHasRestr ? localLift.restricted_at : null);
+    const resolvedRestrictedByName = storedHasRestr
+      ? (storedRestr!.restricted_by_name || null)
+      : dbHasRestr
+        ? dbLift.restricted_by_name
+        : (localHasRestr ? localLift.restricted_by_name : null);
 
-    const resolvedRestrictionDate = dbHasRestr
-      ? dbLift.restriction_date
-      : (localHasRestr ? localLift.restriction_date : (resolvedAllowedFloors.length < 4 ? today : null));
+    const resolvedRestrictedAt = storedHasRestr
+      ? (storedRestr!.restricted_at || null)
+      : dbHasRestr
+        ? dbLift.restricted_at
+        : (localHasRestr ? localLift.restricted_at : null);
+
+    const resolvedRestrictionDate = storedHasRestr
+      ? (storedRestr!.restriction_date || null)
+      : dbHasRestr
+        ? dbLift.restriction_date
+        : (localHasRestr ? localLift.restriction_date : null);
 
     // Phát hiện thang cập bến qua Polling / Realtime DB sync
     if (localLift.status === 'MOVING' && (dbLift.status === 'WAITING_PICKUP' || dbLift.status === 'AVAILABLE')) {

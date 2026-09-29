@@ -108,22 +108,32 @@ export function broadcastLiftArrival(
     }, ...state.notifications]
   }));
 
-  // 4. Phát âm thanh tại chính tab hiện tại nếu tài khoản đủ quyền / thuộc tầng đích
+  // 4. Phát âm thanh TTS tại chính tab hiện tại
+  // Chỉ phát local nếu user đã đăng nhập VÀ là Admin/Supervisor/Manager
+  // Worker trên các tab khác sẽ nghe thông báo qua useAudioBroadcast (DB notification path)
   const { user, assignment } = useAuthStore.getState();
-  const isAdminOrSupervisor =
-    !user ||
-    user.role === 'Admin' ||
-    user.role === 'Supervisor' ||
-    (user.role as string) === 'Manager';
+  const isAdminOrSupervisor = Boolean(
+    user &&
+    (
+      user.role === 'Admin' ||
+      user.role === 'Supervisor' ||
+      (user.role as string) === 'Manager'
+    )
+  );
 
   const userFloor = assignment?.assigned_floor || (user as any)?.assigned_floor;
   const userLiftId = assignment?.lift_id || (user as any)?.lift_id;
 
+  // Worker tại tầng đích hoặc tời được phân công
   const isAssignedFloorWorker = userFloor !== undefined && Number(userFloor) === normFloor;
   const isAssignedLiftWorker = userLiftId && isSameLift(userLiftId, liftId);
 
-  // Admin/Supervisor hoặc Worker ở tầng đích/phân công tời này sẽ phát âm thanh TTS
-  if (isAdminOrSupervisor || isAssignedFloorWorker || isAssignedLiftWorker) {
+  // Admin/Supervisor nghe trực tiếp; Worker tầng đích nghe qua useAudioBroadcast
+  if (isAdminOrSupervisor) {
+    toast.info(`🔊 ${notifTitle}: ${messageText}`, { duration: 6000 });
+    speakText(messageText);
+  } else if (user && (isAssignedFloorWorker || isAssignedLiftWorker)) {
+    // Worker đang ở đúng tab tầng: phát local và tránh double-play từ DB notification
     toast.info(`🔊 ${notifTitle}: ${messageText}`, { duration: 6000 });
     speakText(messageText);
   }

@@ -150,25 +150,22 @@ export const getStoredRestrictionForLift = (
 };
 
 /**
- * Hợp nhất các cấu hình giới hạn tầng từ DB (system_settings) vào localStorage
+ * Đồng bộ cấu hình giới hạn tầng từ DB (system_settings) vào localStorage.
+ * Nếu một tời đã bị gỡ giới hạn trên DB, cấu hình cũ sẽ được xóa sạch khỏi localStorage.
  */
 export const mergeRemoteFloorRestrictions = (remoteRestrictions: Record<string, StoredFloorRestriction>) => {
   if (!remoteRestrictions || typeof remoteRestrictions !== 'object') return;
   try {
-    const current = loadStoredFloorRestrictions();
     const today = getLocalDateString();
-    let changed = false;
+    const valid: Record<string, StoredFloorRestriction> = {};
 
     for (const [key, val] of Object.entries(remoteRestrictions)) {
-      if (val && val.restriction_date === today && Array.isArray(val.allowed_floors)) {
-        current[key] = val;
-        changed = true;
+      if (val && val.restriction_date === today && Array.isArray(val.allowed_floors) && val.allowed_floors.length < 4) {
+        valid[key] = val;
       }
     }
 
-    if (changed) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(valid));
   } catch (e) {
     console.warn('Could not merge remote floor restrictions:', e);
   }

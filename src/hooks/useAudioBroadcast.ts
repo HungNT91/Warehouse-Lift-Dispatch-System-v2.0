@@ -180,12 +180,16 @@ export function useAudioBroadcast() {
         const channel = new BroadcastChannel('wlds_audio_dispatch');
 
         const handleMessage = (event: MessageEvent) => {
-            const { id, targetFloor = 0, targetLift = 'ALL', senderSessionId, text } = event.data || {};
+            const { id, targetFloor = 0, targetLift = 'ALL', senderSessionId, text, timestamp } = event.data || {};
             if (!text || !id) return;
 
             // Skip if already played on this client instance
             if (playedNotificationIds.has(id)) return;
             playedNotificationIds.add(id);
+
+            // Thêm dedup key theo nội dung để tránh DB notification phát lại (30 giây window)
+            const contentDedupKey = `audio-f${Number(targetFloor)}-l${String(targetLift)}-${Math.floor((timestamp || Date.now()) / 30000)}`;
+            playedNotificationIds.add(contentDedupKey);
 
             const canPlay = shouldPlayForRecipient(
                 Number(targetFloor) || 0,
@@ -249,6 +253,14 @@ export function useAudioBroadcast() {
             // Đánh dấu sau khi đã parse xong — mark ngay để tránh double-play kể cả khi canPlay=false
             playedNotificationIds.add(notif.id);
 
+            // Kiểm tra dedup key nội dung (30 giây window) — tránh phát lại nếu đã nghe qua BroadcastChannel
+            const notifTime = new Date(notif.created_at).getTime() || Date.now();
+            const contentDedupKey = `audio-f${Number(targetFloor)}-l${String(targetLift)}-${Math.floor(notifTime / 30000)}`;
+            if (playedNotificationIds.has(contentDedupKey)) {
+                // Đã phát qua BroadcastChannel → bỏ qua để tránh double TTS
+                return;
+            }
+
             const canPlay = shouldPlayForRecipient(
                 Number(targetFloor) || 0,
                 String(targetLift || 'ALL'),
@@ -258,6 +270,7 @@ export function useAudioBroadcast() {
             );
 
             if (canPlay) {
+                playedNotificationIds.add(contentDedupKey);
                 const floorLabel = Number(targetFloor) > 0 ? `Tầng ${targetFloor}` : 'Kênh Chung';
                 const resolvedLiftName = getLiftName(String(targetLift || 'ALL'), lifts);
                 const liftLabel = resolvedLiftName ? ` - ${resolvedLiftName}` : '';
@@ -271,3 +284,4 @@ export function useAudioBroadcast() {
         });
     }, [notifications, user, assignment, lifts]);
 }
+

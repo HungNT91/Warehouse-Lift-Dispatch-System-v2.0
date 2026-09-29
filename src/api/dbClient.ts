@@ -379,15 +379,39 @@ export const db = {
     async getAll(): Promise<DbLift[]> {
       const enrichWithFloorRestrictions = (items: DbLift[]): DbLift[] => {
         return items.map(lift => {
+          // localStorage là nguồn chân lý cho giới hạn tầng (đã có cơ chế tự hết hạn theo ngày)
           const stored = getStoredRestrictionForLift(lift.id, lift.lift_code, lift.lift_name);
           const localItem = mockDbData.lifts.find(l => l.id === lift.id || l.lift_code === lift.lift_code || (l.lift_name && lift.lift_name && l.lift_name === lift.lift_name));
+
+          if (stored?.allowed_floors && stored.allowed_floors.length < 4) {
+            // Có giới hạn hợp lệ trong localStorage → ưu tiên dùng
+            return {
+              ...lift,
+              allowed_floors: stored.allowed_floors,
+              restricted_by_user_id: stored.restricted_by_user_id || null,
+              restricted_by_name: stored.restricted_by_name || null,
+              restricted_at: stored.restricted_at || null,
+              restriction_date: stored.restriction_date || null,
+              pickup_start_time: lift.pickup_start_time || localItem?.pickup_start_time || null
+            };
+          }
+
+          // Không có giới hạn trong localStorage → tời hoạt động không giới hạn
+          // Ưu tiên mockDbData local nếu có allowed_floors hợp lệ (< 4), nhưng kiểm tra restriction_date
+          const localHasActiveRestr = Boolean(
+            localItem?.allowed_floors &&
+            localItem.allowed_floors.length < 4 &&
+            localItem.restriction_date &&
+            localItem.restriction_date === new Date().toLocaleDateString('en-CA')
+          );
+
           return {
             ...lift,
-            allowed_floors: (stored?.allowed_floors && stored.allowed_floors.length < 4) ? stored.allowed_floors : (localItem?.allowed_floors || lift.allowed_floors || [1, 2, 3, 4]),
-            restricted_by_user_id: stored?.restricted_by_user_id || localItem?.restricted_by_user_id || lift.restricted_by_user_id || null,
-            restricted_by_name: stored?.restricted_by_name || localItem?.restricted_by_name || lift.restricted_by_name || null,
-            restricted_at: stored?.restricted_at || localItem?.restricted_at || lift.restricted_at || null,
-            restriction_date: stored?.restriction_date || localItem?.restriction_date || lift.restriction_date || null,
+            allowed_floors: localHasActiveRestr ? localItem!.allowed_floors! : [1, 2, 3, 4],
+            restricted_by_user_id: localHasActiveRestr ? (localItem!.restricted_by_user_id || null) : null,
+            restricted_by_name: localHasActiveRestr ? (localItem!.restricted_by_name || null) : null,
+            restricted_at: localHasActiveRestr ? (localItem!.restricted_at || null) : null,
+            restriction_date: localHasActiveRestr ? localItem!.restriction_date! : null,
             pickup_start_time: lift.pickup_start_time || localItem?.pickup_start_time || null
           };
         });
