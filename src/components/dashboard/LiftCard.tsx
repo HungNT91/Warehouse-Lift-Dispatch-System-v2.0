@@ -8,6 +8,7 @@ import { safeParseTimestamp, getEffectiveAllowedFloors, hasActiveFloorRestrictio
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { speakLiftArrival } from "../../utils/audio";
+import { broadcastLiftArrival } from "../../utils/liftBroadcast";
 import { LiftDetailsModal } from "./LiftDetailsModal";
 import { LiftIssueReportModal } from "./LiftIssueReportModal";
 
@@ -91,18 +92,6 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         }, 1000);
       } else {
         // Arrived at destination
-        // Chỉ phát âm thanh nếu:
-        //   - User là Admin/Supervisor (không gắn tầng cụ thể), HOẶC
-        //   - User là Worker được phân công đúng tầng đích của thang
-        const userAssignedFloor = assignment?.assigned_floor;
-        const shouldAnnounce =
-          !userAssignedFloor ||                        // Admin/Supervisor không có tầng cố định
-          userAssignedFloor === destFloor;             // Worker đang ở đúng tầng đích
-
-        if (shouldAnnounce) {
-          speakLiftArrival(lift.lift_number, destFloor);
-        }
-
         // Check if current active job is an empty call or return job
         const { jobs } = useLiftStore.getState();
         const activeJob = lift.current_job_id
@@ -118,6 +107,9 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
             activeJob.item_type?.includes('tời trống')
           )
           : false;
+
+        // Phát thanh thông báo đến tầng qua toàn bộ hệ thống
+        broadcastLiftArrival(lift.id, lift.lift_number, destFloor, !isEmptyCall);
 
         if (isEmptyCall) {
           // Empty call/return lift arriving at destination -> Immediately AVAILABLE

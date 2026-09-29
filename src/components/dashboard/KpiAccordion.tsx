@@ -5,7 +5,7 @@ import { useLiftStore } from '../../stores/useLiftStore';
 import { safeParseTimestamp } from '../../utils/time';
 
 export const KpiAccordion: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const { lifts, jobs } = useLiftStore();
 
   const kpi = useMemo(() => {

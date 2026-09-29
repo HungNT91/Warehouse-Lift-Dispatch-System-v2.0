@@ -7,7 +7,7 @@ function getAudioContext(): AudioContext {
     audioCtx = new AudioContextClass();
   }
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
   return audioCtx;
 }
@@ -18,7 +18,10 @@ if (typeof window !== 'undefined') {
     try {
       const ctx = getAudioContext();
       if (ctx.state === 'suspended') {
-        ctx.resume();
+        ctx.resume().catch(() => {});
+      }
+      if ('speechSynthesis' in window && window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
       }
     } catch {
       // ignore
@@ -59,13 +62,11 @@ export function speakText(text: string) {
 
     if (!cleanText) return;
 
-    // Small timeout after chime so speech follows chime smoothly
-    setTimeout(() => {
+    const doSpeak = () => {
       try {
         if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
         }
-        window.speechSynthesis.cancel();
 
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.lang = 'vi-VN';
@@ -73,17 +74,41 @@ export function speakText(text: string) {
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
-        const voices = window.speechSynthesis.getVoices();
-        const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
-        if (viVoice) {
-          utterance.voice = viVoice;
-        }
+        // Prevent Chromium GC bug by pinning utterance to global window
+        (window as any).__lastSpeechUtterance = utterance;
 
-        window.speechSynthesis.speak(utterance);
+        const assignVoiceAndPlay = () => {
+          const voices = window.speechSynthesis.getVoices();
+          const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
+          if (viVoice) {
+            utterance.voice = viVoice;
+          }
+          window.speechSynthesis.speak(utterance);
+        };
+
+        if (window.speechSynthesis.getVoices().length === 0) {
+          const handleVoices = () => {
+            window.speechSynthesis.removeEventListener('voiceschanged', handleVoices);
+            assignVoiceAndPlay();
+          };
+          window.speechSynthesis.addEventListener('voiceschanged', handleVoices);
+          // Fallback if event does not trigger
+          setTimeout(assignVoiceAndPlay, 100);
+        } else {
+          assignVoiceAndPlay();
+        }
       } catch (err) {
         console.warn('SpeechSynthesis inner error:', err);
       }
-    }, 300);
+    };
+
+    // If currently speaking, cancel and delay 80ms to avoid Chromium cancel/speak bug
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setTimeout(doSpeak, 80);
+    } else {
+      setTimeout(doSpeak, 250); // slight pause after chime
+    }
   } catch (err) {
     console.warn('SpeechSynthesis error:', err);
   }

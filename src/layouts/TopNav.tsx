@@ -135,18 +135,16 @@ export function TopNav() {
             {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
 
-          {user?.role === 'Worker' && (
-            <button 
-              onClick={() => {
-                speakLiftArrival('Thang P1', 4);
-                toast.success("🔔 Đã thử nghiệm giọng nói thông báo thang cập bến!");
-              }}
-              title="Thử âm thanh giọng nói thông báo khi đến tầng"
-              className="relative p-2 text-slate-400 hover:text-amber-500 transition-colors cursor-pointer"
-            >
-              <Volume2 className="w-5 h-5 text-amber-500 animate-pulse" />
-            </button>
-          )}
+          <button 
+            onClick={() => {
+              speakLiftArrival('Thang P1', 4);
+              toast.success("🔔 Đã thử nghiệm giọng nói thông báo thang cập bến!");
+            }}
+            title="Thử âm thanh giọng nói thông báo khi đến tầng"
+            className="relative p-2 text-slate-400 hover:text-amber-500 transition-colors cursor-pointer"
+          >
+            <Volume2 className="w-5 h-5 text-amber-500" />
+          </button>
 
           <button className="relative p-2 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
             <Bell className="w-5 h-5" />

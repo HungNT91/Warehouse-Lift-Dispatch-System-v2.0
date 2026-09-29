@@ -7,6 +7,7 @@ import { useAuthStore } from './useAuthStore';
 import { speakLiftArrival } from '../utils/audio';
 import { isSameLift, safeParseTimestamp, getLocalDateString, getEffectiveAllowedFloors } from '../utils/time';
 import { getStoredRestrictionForLift, saveStoredFloorRestriction } from '../utils/floorRestrictions';
+import { broadcastLiftArrival } from '../utils/liftBroadcast';
 
 interface LiftState {
   lifts: Lift[];
@@ -184,6 +185,7 @@ function processLiftsAndJobs(
     updated_at: j.created_at
   }));
 
+  const today = getLocalDateString();
   const mergedLifts: Lift[] = mappedLifts.map(dbLift => {
     const localLift = currentLifts.find(l =>
       l.id === dbLift.id ||
@@ -194,7 +196,38 @@ function processLiftsAndJobs(
 
     if (!localLift) return dbLift;
 
-    const resolvedAllowedFloors = localLift.allowed_floors ?? dbLift.allowed_floors ?? [1, 2, 3, 4];
+    // Xác định cấu hình giới hạn tầng chính xác nhất:
+    // 1. Ưu tiên dbLift nếu đang có giới hạn hợp lệ (< 4 tầng)
+    // 2. Kế đến giữ lại localLift nếu localLift đang có giới hạn hợp lệ trong ngày
+    // 3. Mặc định [1, 2, 3, 4]
+    const dbHasRestr = Boolean(dbLift.allowed_floors && dbLift.allowed_floors.length < 4 && (!dbLift.restriction_date || dbLift.restriction_date === today));
+    const localHasRestr = Boolean(localLift.allowed_floors && localLift.allowed_floors.length < 4 && (!localLift.restriction_date || localLift.restriction_date === today));
+
+    const resolvedAllowedFloors = dbHasRestr
+      ? dbLift.allowed_floors!
+      : (localHasRestr ? localLift.allowed_floors! : [1, 2, 3, 4]);
+
+    const resolvedRestrictedByUserId = dbHasRestr
+      ? dbLift.restricted_by_user_id
+      : (localHasRestr ? localLift.restricted_by_user_id : null);
+
+    const resolvedRestrictedByName = dbHasRestr
+      ? dbLift.restricted_by_name
+      : (localHasRestr ? localLift.restricted_by_name : null);
+
+    const resolvedRestrictedAt = dbHasRestr
+      ? dbLift.restricted_at
+      : (localHasRestr ? localLift.restricted_at : null);
+
+    const resolvedRestrictionDate = dbHasRestr
+      ? dbLift.restriction_date
+      : (localHasRestr ? localLift.restriction_date : (resolvedAllowedFloors.length < 4 ? today : null));
+
+    // Phát hiện thang cập bến qua Polling / Realtime DB sync
+    if (localLift.status === 'MOVING' && (dbLift.status === 'WAITING_PICKUP' || dbLift.status === 'AVAILABLE')) {
+      const arrivedFloor = dbLift.current_floor || dbLift.destination_floor || localLift.destination_floor || 1;
+      broadcastLiftArrival(dbLift.id, dbLift.lift_number, arrivedFloor, dbLift.status === 'WAITING_PICKUP');
+    }
 
     if (localLift.status === 'MOVING') {
       const newStatus = dbLift.status === 'WAITING_PICKUP' ? 'WAITING_PICKUP' : 'MOVING';
@@ -211,6 +244,10 @@ function processLiftsAndJobs(
         operator: dbLift.operator ?? localLift.operator,
         last_update: dbLift.last_update ?? localLift.last_update,
         allowed_floors: resolvedAllowedFloors,
+        restricted_by_user_id: resolvedRestrictedByUserId,
+        restricted_by_name: resolvedRestrictedByName,
+        restricted_at: resolvedRestrictedAt,
+        restriction_date: resolvedRestrictionDate,
       };
     }
 
@@ -230,12 +267,20 @@ function processLiftsAndJobs(
         current_job_id: newStatus === 'WAITING_PICKUP' ? (dbLift.current_job_id ?? localLift.current_job_id) : null,
         operator: newStatus === 'WAITING_PICKUP' ? (dbLift.operator ?? localLift.operator) : null,
         allowed_floors: resolvedAllowedFloors,
+        restricted_by_user_id: resolvedRestrictedByUserId,
+        restricted_by_name: resolvedRestrictedByName,
+        restricted_at: resolvedRestrictedAt,
+        restriction_date: resolvedRestrictionDate,
       };
     }
 
     return {
       ...dbLift,
       allowed_floors: resolvedAllowedFloors,
+      restricted_by_user_id: resolvedRestrictedByUserId,
+      restricted_by_name: resolvedRestrictedByName,
+      restricted_at: resolvedRestrictedAt,
+      restriction_date: resolvedRestrictionDate,
     };
   });
 
@@ -374,20 +419,13 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       }
     }
 
-    // Trigger 2: autoSendLiftArrival
+    // Trigger 2: autoSendLiftArrival & Hệ Thống Phát Thanh
     if (updates.status && prevLift?.status === 'MOVING' && ['WAITING_PICKUP', 'AVAILABLE'].includes(updates.status)) {
       const destFloor = updates.current_floor || prevLift?.destination_floor || prevLift?.current_floor || 1;
       const liftName = prevLift?.lift_number || liftId;
 
-      // Phát âm thanh TTS theo tầng được phân công
-      // - Worker: chỉ phát khi thang đến đúng tầng mình phụ trách
-      // - Admin/Supervisor: luôn phát (không có tầng cố định)
-      const { assignment } = useAuthStore.getState();
-      const userAssignedFloor = assignment?.assigned_floor;
-      const shouldAnnounce = !userAssignedFloor || userAssignedFloor === destFloor;
-      if (shouldAnnounce) {
-        speakLiftArrival(liftName, destFloor);
-      }
+      // Phát thanh thông báo đến tầng qua toàn bộ hệ thống (BroadcastChannel, DB Notification, Local TTS)
+      broadcastLiftArrival(liftId, liftName, destFloor, updates.status === 'WAITING_PICKUP');
 
       const { autoSendLiftArrival, sendTelegramMessage, floorConfigs, defaultChatId } = useTelegramStore.getState();
       if (autoSendLiftArrival) {

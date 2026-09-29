@@ -16,7 +16,12 @@ import {
   DbUserDevice,
   DbNotification
 } from '../types/database';
-import { getStoredRestrictionForLift, saveStoredFloorRestriction } from '../utils/floorRestrictions';
+import {
+  getStoredRestrictionForLift,
+  saveStoredFloorRestriction,
+  mergeRemoteFloorRestrictions,
+  loadStoredFloorRestrictions
+} from '../utils/floorRestrictions';
 
 // Helper to check if Supabase is initialized
 export const isSupabaseConfigured = (): boolean => {
@@ -378,7 +383,7 @@ export const db = {
           const localItem = mockDbData.lifts.find(l => l.id === lift.id || l.lift_code === lift.lift_code || (l.lift_name && lift.lift_name && l.lift_name === lift.lift_name));
           return {
             ...lift,
-            allowed_floors: stored?.allowed_floors || localItem?.allowed_floors || lift.allowed_floors || [1, 2, 3, 4],
+            allowed_floors: (stored?.allowed_floors && stored.allowed_floors.length < 4) ? stored.allowed_floors : (localItem?.allowed_floors || lift.allowed_floors || [1, 2, 3, 4]),
             restricted_by_user_id: stored?.restricted_by_user_id || localItem?.restricted_by_user_id || lift.restricted_by_user_id || null,
             restricted_by_name: stored?.restricted_by_name || localItem?.restricted_by_name || lift.restricted_by_name || null,
             restricted_at: stored?.restricted_at || localItem?.restricted_at || lift.restricted_at || null,
@@ -390,6 +395,19 @@ export const db = {
 
       if (!isSupabaseConfigured()) return enrichWithFloorRestrictions(mockDbData.lifts);
       try {
+        // Đồng bộ cấu hình giới hạn tầng từ bảng system_settings nếu có
+        try {
+          const { data: settingData } = await getSupabase()
+            .from('system_settings')
+            .select('*')
+            .eq('setting_key', 'LIFT_FLOOR_RESTRICTIONS')
+            .maybeSingle();
+          if (settingData?.setting_value) {
+            const parsed = JSON.parse(settingData.setting_value);
+            mergeRemoteFloorRestrictions(parsed);
+          }
+        } catch { }
+
         const { data, error } = await getSupabase().from('lifts').select('*');
         if (!error && data && data.length > 0) {
           const enriched = enrichWithFloorRestrictions(data);
@@ -450,6 +468,8 @@ export const db = {
             restriction_date: cleanUpdates.restriction_date
           });
         }
+        // Đồng bộ lên bảng system_settings để mọi tab/thiết bị khác nhận được tức thì qua polling/realtime
+        db.systemSettings.updateSetting('LIFT_FLOOR_RESTRICTIONS', JSON.stringify(loadStoredFloorRestrictions())).catch(console.error);
       }
 
       if (isSupabaseConfigured()) {
