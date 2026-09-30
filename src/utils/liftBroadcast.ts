@@ -3,6 +3,7 @@ import { db } from '../api/dbClient';
 import { useLiftStore } from '../stores/useLiftStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { toast } from 'sonner';
+import { playedNotificationIds } from '../hooks/useAudioBroadcast';
 
 /** Recent arrival cache: map key `${liftId}-f${destFloor}` -> timestamp to prevent duplicate announcements */
 const recentArrivals = new Map<string, number>();
@@ -94,7 +95,12 @@ export function broadcastLiftArrival(
     status: 'SENT'
   }).catch(console.error);
 
-  // 3. Thêm thông báo vào store cục bộ
+  // 3. Thêm thông báo vào store cục bộ — đánh dấu ID ngay để chặn Effect #2 phát lại TTS
+  playedNotificationIds.add(notifId);
+  // Đánh dấu contentDedupKey để chặn DB notification path phát lại nếu cùng 30s window
+  const contentDedupKey = `audio-f${normFloor}-l${liftId}-${Math.floor(now / 30000)}`;
+  playedNotificationIds.add(contentDedupKey);
+
   useLiftStore.setState(state => ({
     notifications: [{
       id: notifId,

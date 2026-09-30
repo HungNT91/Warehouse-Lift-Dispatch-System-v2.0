@@ -11,6 +11,7 @@ import { useLiftStore } from '../stores/useLiftStore';
 import { toast } from 'sonner';
 import { db } from '../api/dbClient';
 import { speakText } from '../utils/audio';
+import { playedNotificationIds } from '../hooks/useAudioBroadcast';
 
 export function TelegramCenter() {
   const { user } = useAuthStore();
@@ -397,9 +398,18 @@ export function TelegramCenter() {
         status: 'SENT'
       }).catch(console.error);
 
-      // 3. Cập nhật state Notifications cục bộ
+      // 3. Cập nhật state Notifications cục bộ — đánh dấu ngay vào playedNotificationIds
+      //    để useAudioBroadcast Effect #2 không phát lại TTS trên chính tab này
+      const localNotifId = `notif-audio-${Date.now()}`;
+      playedNotificationIds.add(localNotifId);
+
+      // Đánh dấu contentDedupKey ngay tại đây để chặn double-play qua DB notification path
+      const nowMs = Date.now();
+      const localDedupKey = `audio-f${targetFloor}-l${String(targetLift)}-${Math.floor(nowMs / 30000)}`;
+      playedNotificationIds.add(localDedupKey);
+
       const newNotif = {
-        id: `notif-audio-${Date.now()}`,
+        id: localNotifId,
         title: notifTitle,
         message: formattedMessage,
         severity: 'info' as const,

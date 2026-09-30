@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import type { Lift } from '../types';
 
 // Set to track played audio notification IDs on this client session to avoid double speech
-const playedNotificationIds = new Set<string>();
+export const playedNotificationIds = new Set<string>();
 
 /** Unique session ID per browser tab to avoid self-echo while allowing other tabs/devices to speak */
 function getSessionId(): string {
@@ -111,9 +111,9 @@ function shouldPlayForRecipient(
     ));
 
     // If both specific floor and specific lift are targeted:
-    // Worker hears if they are at that floor OR assigned to that lift
+    // Worker must match floor AND lift (both conditions required)
     if (!isAllFloors && !isAllLifts) {
-        return matchesFloor || matchesLift;
+        return matchesFloor && matchesLift;
     }
 
     // If only specific floor is targeted:
