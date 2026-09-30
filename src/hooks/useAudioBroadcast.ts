@@ -161,10 +161,10 @@ function getLiftName(targetLift: string, lifts: Lift[]): string {
 function buildTtsPrefix(targetFloor: number, targetLift: string, lifts: Lift[]): string {
     const floorPart = targetFloor > 0 ? `Tầng ${targetFloor}` : '';
     const liftPart = getLiftName(targetLift, lifts);
-    if (liftPart && floorPart) return `Thông báo quản lý. ${liftPart}, ${floorPart}. `;
-    if (liftPart) return `Thông báo quản lý. ${liftPart}. `;
-    if (floorPart) return `Thông báo quản lý. ${floorPart}. `;
-    return 'Thông báo từ quản lý. ';
+    if (liftPart && floorPart) return `Thông báo. ${liftPart}, ${floorPart}. `;
+    if (liftPart) return `Thông báo. ${liftPart}. `;
+    if (floorPart) return `Thông báo. ${floorPart}. `;
+    return 'Thông báo. ';
 }
 
 export function useAudioBroadcast() {
