@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useLiftStore } from '../stores/useLiftStore';
 import { speakText } from '../utils/audio';
@@ -36,11 +36,35 @@ function isSameLift(val1: any, val2: any): boolean {
     return false;
 }
 
+/**
+ * Lấy cấu hình trạm làm việc / tầng của thiết bị này (Station Floor)
+ * Giá trị: 1 | 2 | 3 | 4 | 0 (0 = Chế độ giám sát toàn kho) | null (Tự động theo ca làm việc / tài khoản)
+ */
+export function getDeviceStationFloor(): number | null {
+    if (typeof window === 'undefined') return null;
+    try {
+        const val = localStorage.getItem('wlds_station_floor') || sessionStorage.getItem('wlds_station_floor');
+        if (!val || val === 'AUTO') return null;
+        if (val.toUpperCase() === 'ALL') return 0;
+        const num = parseInt(val.replace(/[^0-9]/g, ''), 10);
+        if (!isNaN(num) && num >= 0) return num;
+    } catch { }
+    return null;
+}
+
 /** Robust recipient floor resolution */
-function getRecipientFloor(user: any, assignment: any): number | null {
+export function getRecipientFloor(user: any, assignment: any): number | null {
+    // 1. Kiểm tra cấu hình gán trực tiếp cho thiết bị này trước
+    const deviceFloor = getDeviceStationFloor();
+    if (deviceFloor !== null) {
+        return deviceFloor;
+    }
+
+    // 2. Ca làm việc phân công hiện tại
     if (assignment?.assigned_floor && Number(assignment.assigned_floor) > 0) {
         return Number(assignment.assigned_floor);
     }
+    // 3. Thông tin tài khoản
     if ((user as any)?.assigned_floor && Number((user as any).assigned_floor) > 0) {
         return Number((user as any).assigned_floor);
     }
@@ -67,14 +91,22 @@ function getRecipientFloor(user: any, assignment: any): number | null {
 }
 
 /** Robust recipient lift resolution */
-function getRecipientLiftId(user: any, assignment: any): string | null {
+export function getRecipientLiftId(user: any, assignment: any): string | null {
     if (assignment?.lift_id) return String(assignment.lift_id);
     if ((user as any)?.lift_id) return String((user as any).lift_id);
     return null;
 }
 
-/** Determine whether recipient device should speak this announcement */
-function shouldPlayForRecipient(
+/** 
+ * Xác định xem thiết bị này có được phát âm thanh TTS hay không.
+ * NGUYÊN TẮC:
+ * 1. Chặn self-echo trên chính tab gửi.
+ * 2. Nếu targetFloor === 0: Kênh thông báo chung toàn kho -> Tất cả thiết bị đều phát.
+ * 3. Nếu targetFloor > 0: Thông báo chỉ định tầng nhận hàng (ví dụ: Tời đến Tầng 3 nhận hàng):
+ *    -> CHỈ THIẾT BỊ Ở TẦNG ĐÓ MỚI ĐƯỢC PHÁT!
+ *    -> Các thiết bị ở tầng khác (kể cả đăng nhập Admin/Supervisor) TUYỆT ĐỐI KHÔNG ĐƯỢC PHÁT!
+ */
+export function shouldPlayForRecipient(
     targetFloor: number,
     targetLift: string,
     senderSessionId: string,
@@ -87,47 +119,28 @@ function shouldPlayForRecipient(
         return false;
     }
 
-    // 2. Admins, Supervisors and Managers hear all warehouse announcements
-    const isAdminOrSupervisor =
-        user?.role === 'Admin' ||
-        user?.role === 'Supervisor' ||
-        (user?.role as string) === 'Manager';
-
-    if (isAdminOrSupervisor) {
+    // 2. Thông báo kênh chung toàn kho (targetFloor === 0)
+    if (targetFloor === 0) {
         return true;
     }
 
-    // 3. For warehouse workers: check floor & lift targeting
+    // 3. Thông báo gửi đến tầng nhận hàng cụ thể (targetFloor > 0):
+    // Xác định tầng của thiết bị này:
     const recipientFloor = getRecipientFloor(user, assignment);
-    const recipientLift = getRecipientLiftId(user, assignment);
 
-    const isAllFloors = targetFloor === 0;
-    const isAllLifts = !targetLift || targetLift === 'ALL';
-
-    const matchesFloor = isAllFloors || (recipientFloor !== null && Number(recipientFloor) === Number(targetFloor));
-    const matchesLift = isAllLifts || (recipientLift !== null && (
-        recipientLift === targetLift ||
-        isSameLift(recipientLift, targetLift)
-    ));
-
-    // If both specific floor and specific lift are targeted:
-    // Worker must match floor AND lift (both conditions required)
-    if (!isAllFloors && !isAllLifts) {
-        return matchesFloor && matchesLift;
+    // Nếu thiết bị được cấu hình chế độ Tổng / Toàn kho (0)
+    if (recipientFloor === 0) {
+        return true;
     }
 
-    // If only specific floor is targeted:
-    if (!isAllFloors && isAllLifts) {
-        return matchesFloor;
+    // Nếu thiết bị chưa xác định tầng (chưa cấu hình tầng và tài khoản không gắn tầng)
+    // -> Không phát bừa bãi ra tất cả các tầng!
+    if (recipientFloor === null) {
+        return false;
     }
 
-    // If only specific lift is targeted:
-    if (isAllFloors && !isAllLifts) {
-        return matchesLift;
-    }
-
-    // Both are all -> broadcast to entire warehouse
-    return true;
+    // Thiết bị PHẢI ở đúng tầng nhận hàng (targetFloor)
+    return Number(recipientFloor) === Number(targetFloor);
 }
 
 /** Resolve a human-readable lift name from lift ID or raw value, using the store's lift list */
@@ -158,6 +171,18 @@ export function useAudioBroadcast() {
     const { user, assignment } = useAuthStore();
     const { notifications, lifts } = useLiftStore();
     const initialMarkedRef = useRef(false);
+    const [, setStationFloorVer] = useState(0);
+
+    // Lắng nghe sự kiện người dùng thay đổi trạm tầng thiết bị trên TopNav
+    useEffect(() => {
+        const handler = () => setStationFloorVer(v => v + 1);
+        window.addEventListener('wlds_station_floor_changed', handler);
+        window.addEventListener('storage', handler);
+        return () => {
+            window.removeEventListener('wlds_station_floor_changed', handler);
+            window.removeEventListener('storage', handler);
+        };
+    }, []);
 
     // Initial mount: mark older historical notifications so only fresh ones speak
     useEffect(() => {
@@ -187,9 +212,9 @@ export function useAudioBroadcast() {
             if (playedNotificationIds.has(id)) return;
             playedNotificationIds.add(id);
 
-            // Thêm dedup key theo nội dung để tránh DB notification phát lại (30 giây window)
-            const contentDedupKey = `audio-f${Number(targetFloor)}-l${String(targetLift)}-${Math.floor((timestamp || Date.now()) / 30000)}`;
-            playedNotificationIds.add(contentDedupKey);
+            // Thêm dedup key theo nội dung và text snippet để tránh DB notification phát lại
+            const snippet = text.substring(0, 50).trim();
+            playedNotificationIds.add(`snippet_${snippet}`);
 
             const canPlay = shouldPlayForRecipient(
                 Number(targetFloor) || 0,
@@ -215,30 +240,27 @@ export function useAudioBroadcast() {
             channel.removeEventListener('message', handleMessage);
             channel.close();
         };
-    }, [user, assignment]);
+    }, [user, assignment, lifts]);
 
     // 2. Cross-device database notification audio broadcast via Realtime / Polling
     useEffect(() => {
         // Chờ user load xong mới xử lý — tránh bỏ lỡ TTS khi assignment chưa có
-        if (!user || !notifications || notifications.length === 0) return;
+        if (!notifications || notifications.length === 0) return;
 
         notifications.forEach((notif) => {
             if (!notif.message || playedNotificationIds.has(notif.id)) return;
 
-            // Detect audio dispatch notifications
+            // Chỉ xử lý thông báo có tag [AUDIO_DISPATCH] hoặc title 'phát thanh' rõ ràng
             const isAudioDispatch =
                 notif.message.includes('[AUDIO_DISPATCH') ||
-                notif.category === 'telegram' ||
                 notif.title?.toLowerCase().includes('phát thanh');
 
             if (!isAudioDispatch) {
-                // Đánh dấu đã xử lý (không phải audio dispatch) để tránh check lại vô nghĩa
                 playedNotificationIds.add(notif.id);
                 return;
             }
 
             // Extract metadata: "[AUDIO_DISPATCH|F2|LIFT:L1|SENDER:u1] Message content"
-            // or older: "[AUDIO_DISPATCH|F2|SENDER:u1] Message content"
             let targetFloor = (notif as any).target_floor || 0;
             let targetLift = (notif as any).target_lift || 'ALL';
             let cleanText = notif.message;
@@ -250,14 +272,12 @@ export function useAudioBroadcast() {
                 cleanText = metaMatch[4];
             }
 
-            // Đánh dấu sau khi đã parse xong — mark ngay để tránh double-play kể cả khi canPlay=false
+            // Đánh dấu id ngay để tránh xử lý lại
             playedNotificationIds.add(notif.id);
 
-            // Kiểm tra dedup key nội dung (30 giây window) — tránh phát lại nếu đã nghe qua BroadcastChannel
-            const notifTime = new Date(notif.created_at).getTime() || Date.now();
-            const contentDedupKey = `audio-f${Number(targetFloor)}-l${String(targetLift)}-${Math.floor(notifTime / 30000)}`;
-            if (playedNotificationIds.has(contentDedupKey)) {
-                // Đã phát qua BroadcastChannel → bỏ qua để tránh double TTS
+            // Kiểm tra dedup theo snippet nội dung để tránh phát lại nếu đã nghe qua BroadcastChannel
+            const snippet = cleanText.substring(0, 50).trim();
+            if (playedNotificationIds.has(`snippet_${snippet}`)) {
                 return;
             }
 
@@ -270,7 +290,7 @@ export function useAudioBroadcast() {
             );
 
             if (canPlay) {
-                playedNotificationIds.add(contentDedupKey);
+                playedNotificationIds.add(`snippet_${snippet}`);
                 const floorLabel = Number(targetFloor) > 0 ? `Tầng ${targetFloor}` : 'Kênh Chung';
                 const resolvedLiftName = getLiftName(String(targetLift || 'ALL'), lifts);
                 const liftLabel = resolvedLiftName ? ` - ${resolvedLiftName}` : '';

@@ -3,7 +3,7 @@ import { db } from '../api/dbClient';
 import { useLiftStore } from '../stores/useLiftStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { toast } from 'sonner';
-import { playedNotificationIds } from '../hooks/useAudioBroadcast';
+import { playedNotificationIds, shouldPlayForRecipient } from '../hooks/useAudioBroadcast';
 
 /** Recent arrival cache: map key `${liftId}-f${destFloor}` -> timestamp to prevent duplicate announcements */
 const recentArrivals = new Map<string, number>();
@@ -64,6 +64,11 @@ export function broadcastLiftArrival(
   const senderSessionId = getSessionId();
   const notifId = `arr-${liftId}-${normFloor}-${now}`;
 
+  // Đánh dấu snippet ngay lập tức vào dedup set để không bị phát đúp
+  const snippet = messageText.substring(0, 50).trim();
+  playedNotificationIds.add(notifId);
+  playedNotificationIds.add(`snippet_${snippet}`);
+
   // 1. Phát qua BroadcastChannel tới tất cả các tab khác trên cùng trình duyệt
   if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
     try {
@@ -95,12 +100,7 @@ export function broadcastLiftArrival(
     status: 'SENT'
   }).catch(console.error);
 
-  // 3. Thêm thông báo vào store cục bộ — đánh dấu ID ngay để chặn Effect #2 phát lại TTS
-  playedNotificationIds.add(notifId);
-  // Đánh dấu contentDedupKey để chặn DB notification path phát lại nếu cùng 30s window
-  const contentDedupKey = `audio-f${normFloor}-l${liftId}-${Math.floor(now / 30000)}`;
-  playedNotificationIds.add(contentDedupKey);
-
+  // 3. Thêm thông báo vào store cục bộ
   useLiftStore.setState(state => ({
     notifications: [{
       id: notifId,
@@ -114,33 +114,17 @@ export function broadcastLiftArrival(
     }, ...state.notifications]
   }));
 
-  // 4. Phát âm thanh TTS tại chính tab hiện tại
-  // Chỉ phát local nếu user đã đăng nhập VÀ là Admin/Supervisor/Manager
-  // Worker trên các tab khác sẽ nghe thông báo qua useAudioBroadcast (DB notification path)
+  // 4. Kiểm tra phát âm thanh TTS tại chính thiết bị/tab hiện tại
+  // NGUYÊN TẮC: CHỈ PHÁT NẾU THIẾT BỊ NÀY THỰC SỰ LÀ THIẾT BỊ TẦNG NHẬN HÀNG (normFloor)!
+  // Nếu máy tính này ở tầng khác (ví dụ Tầng gửi hàng hay phòng điều hành tầng khác),
+  // chỉ hiển thị Toast trực quan, TUYỆT ĐỐI KHÔNG PHÁT ÂM THANH!
   const { user, assignment } = useAuthStore.getState();
-  const isAdminOrSupervisor = Boolean(
-    user &&
-    (
-      user.role === 'Admin' ||
-      user.role === 'Supervisor' ||
-      (user.role as string) === 'Manager'
-    )
-  );
+  const canSpeakHere = shouldPlayForRecipient(normFloor, liftId, '', user, assignment);
 
-  const userFloor = assignment?.assigned_floor || (user as any)?.assigned_floor;
-  const userLiftId = assignment?.lift_id || (user as any)?.lift_id;
+  // Toast luôn hiển thị cho người vận hành biết trạng thái thang
+  toast.info(`🔔 ${notifTitle}`, { duration: 5000 });
 
-  // Worker tại tầng đích hoặc tời được phân công
-  const isAssignedFloorWorker = userFloor !== undefined && Number(userFloor) === normFloor;
-  const isAssignedLiftWorker = userLiftId && isSameLift(userLiftId, liftId);
-
-  // Admin/Supervisor nghe trực tiếp; Worker tầng đích nghe qua useAudioBroadcast
-  if (isAdminOrSupervisor) {
-    toast.info(`🔊 ${notifTitle}: ${messageText}`, { duration: 6000 });
-    speakText(messageText);
-  } else if (user && (isAssignedFloorWorker || isAssignedLiftWorker)) {
-    // Worker đang ở đúng tab tầng: phát local và tránh double-play từ DB notification
-    toast.info(`🔊 ${notifTitle}: ${messageText}`, { duration: 6000 });
+  if (canSpeakHere) {
     speakText(messageText);
   }
 }

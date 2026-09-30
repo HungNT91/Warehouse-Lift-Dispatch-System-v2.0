@@ -108,9 +108,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
           )
           : false;
 
-        // Phát thanh thông báo đến tầng qua toàn bộ hệ thống
-        broadcastLiftArrival(lift.id, lift.lift_number, destFloor, !isEmptyCall);
-
+        // Trạng thái cập bến: useLiftStore.updateLift sẽ tự động kích hoạt broadcastLiftArrival tập trung
         if (isEmptyCall) {
           // Empty call/return lift arriving at destination -> Immediately AVAILABLE
           updateLift(lift.id, {

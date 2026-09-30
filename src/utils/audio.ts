@@ -35,33 +35,53 @@ if (typeof window !== 'undefined') {
   window.addEventListener('touchstart', unlockAudio);
 }
 
+// Global cache to prevent duplicate speech announcements within 12 seconds
+const recentSpokenTexts = new Map<string, number>();
+
 /**
  * Text-to-Speech (TTS) voice announcement in Vietnamese
  */
 export function speakText(text: string) {
-  // Always trigger chime sound alert for clear audibility
-  playElevatorChime();
-
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     return;
   }
 
-  try {
-    // Resume speech synthesis if browser paused audio
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
+  // Strip HTML tags and normalize whitespace for clean voice playback
+  const cleanText = text
+    .replace(/<[^>]*>?/gm, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, ' và ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleanText) return;
+
+  // Normalize key for deduplication comparison (ignore case, punctuation and spacing)
+  const normKey = cleanText
+    .toLowerCase()
+    .replace(/[^a-z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/g, '');
+
+  const now = Date.now();
+  const lastSpokenTime = recentSpokenTexts.get(normKey) || 0;
+
+  // Chặn hoàn toàn nếu câu nói giống nhau được gọi lại trong vòng 12 giây
+  if (now - lastSpokenTime < 12000) {
+    console.info('[TTS] Bỏ qua câu thông báo trùng lặp trong 12s:', cleanText);
+    return;
+  }
+  recentSpokenTexts.set(normKey, now);
+
+  // Dọn dẹp cache cũ sau mỗi 50 entries
+  if (recentSpokenTexts.size > 50) {
+    for (const [k, v] of recentSpokenTexts.entries()) {
+      if (now - v > 30000) recentSpokenTexts.delete(k);
     }
+  }
 
-    // Strip HTML tags and normalize whitespace for clean voice playback
-    const cleanText = text
-      .replace(/<[^>]*>?/gm, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, ' và ')
-      .replace(/\s+/g, ' ')
-      .trim();
+  // Always trigger chime sound alert for clear audibility
+  playElevatorChime();
 
-    if (!cleanText) return;
-
+  try {
     const doSpeak = () => {
       try {
         if (window.speechSynthesis.paused) {

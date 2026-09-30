@@ -18,6 +18,24 @@ import { getNavItemsForRole } from "../config/navigation";
 export function TopNav() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isFloorSelectorOpen, setIsFloorSelectorOpen] = useState(false);
+  const [stationFloor, setStationFloor] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('wlds_station_floor') || 'AUTO';
+    }
+    return 'AUTO';
+  });
+
+  const handleSelectStationFloor = (val: string) => {
+    setStationFloor(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('wlds_station_floor', val);
+      window.dispatchEvent(new Event('wlds_station_floor_changed'));
+    }
+    const label = val === 'ALL' ? 'Toàn kho' : val === 'AUTO' ? 'Tự động' : `Tầng ${val}`;
+    toast.success(`Đã cấu hình trạm thiết bị: ${label}`);
+  };
+
   const { theme, setTheme } = useTheme();
   const { user, assignment, logout } = useAuthStore();
   const { lifts, syncStatus, lastSyncedAt } = useLiftStore();
@@ -122,6 +140,75 @@ export function TopNav() {
               <span>Tầng {assignment.assigned_floor || 1}</span>
             </Link>
           )}
+
+          {/* Device Station Floor Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setIsFloorSelectorOpen(!isFloorSelectorOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+              title="Cấu hình vị trí đặt thiết bị này để chỉ phát loa TTS khi hàng đến đúng tầng"
+            >
+              <span className="text-amber-500">📍</span>
+              <span className="hidden sm:inline">Trạm:</span>
+              <span className="text-blue-600 dark:text-blue-400 font-extrabold">
+                {stationFloor === 'ALL'
+                  ? 'Toàn kho'
+                  : stationFloor && stationFloor !== 'AUTO'
+                  ? `Tầng ${stationFloor}`
+                  : assignment?.assigned_floor
+                  ? `Tầng ${assignment.assigned_floor} (Ca)`
+                  : (user as any)?.assigned_floor
+                  ? `Tầng ${(user as any).assigned_floor}`
+                  : 'Tự động'}
+              </span>
+            </button>
+
+            {isFloorSelectorOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setIsFloorSelectorOpen(false)}
+                />
+                <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-2 py-1 text-[11px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 mb-1">
+                    Vị Trí Thiết Bị Này
+                  </div>
+                  <div className="space-y-0.5">
+                    {[
+                      { id: 'AUTO', label: 'Tự động (Theo tài khoản/ca)' },
+                      { id: '1', label: 'Máy đặt tại Tầng 1' },
+                      { id: '2', label: 'Máy đặt tại Tầng 2' },
+                      { id: '3', label: 'Máy đặt tại Tầng 3' },
+                      { id: '4', label: 'Máy đặt tại Tầng 4' },
+                      { id: 'ALL', label: 'Loa Tổng (Phòng Điều Hành)' },
+                    ].map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          handleSelectStationFloor(item.id);
+                          setIsFloorSelectorOpen(false);
+                        }}
+                        className={cn(
+                          "w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center justify-between",
+                          stationFloor === item.id || (!stationFloor && item.id === 'AUTO')
+                            ? "bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
+                            : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        )}
+                      >
+                        <span>{item.label}</span>
+                        {(stationFloor === item.id || (!stationFloor && item.id === 'AUTO')) && (
+                          <span className="text-blue-600">✓</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 px-2 text-[10px] text-slate-400 leading-tight">
+                    * Loa giọng đọc TTS chỉ phát trên thiết bị ở đúng tầng nhận hàng.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-4 sm:gap-6">
           <div className="text-right hidden sm:block">
