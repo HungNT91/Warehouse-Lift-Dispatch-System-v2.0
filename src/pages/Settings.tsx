@@ -34,8 +34,8 @@ export function Settings() {
   const [shiftNightEnd, setShiftNightEnd] = useState('06:00');
 
   // Lift Parameters state
-  const [cargoWarningTimeout, setCargoWarningTimeout] = useState('5');
-  const [liftSpeedPerFloor, setLiftSpeedPerFloor] = useState('5');
+  const [cargoWarningTimeout, setCargoWarningTimeout] = useState('2');
+  const [liftSpeedPerFloor, setLiftSpeedPerFloor] = useState('20');
   const [maxLiftLoad, setMaxLiftLoad] = useState('1000');
   const [maintenanceInterval, setMaintenanceInterval] = useState('30');
   const [autoReturnFloor, setAutoReturnFloor] = useState('1');
@@ -312,7 +312,7 @@ export function Settings() {
                         </label>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-slate-700 dark:text-slate-300">Nhắc nhở chưa lấy hàng (&gt; 3 phút)</span>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Nhắc nhở chưa lấy hàng (&gt; 2 phút)</span>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input type="checkbox" defaultChecked className="sr-only peer" />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
@@ -410,7 +410,7 @@ export function Settings() {
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">Tốc độ tời mô phỏng (Giây/tầng)</label>
                       <div className="relative">
-                        <input type="number" min="1" max="30" value={liftSpeedPerFloor} onChange={e => setLiftSpeedPerFloor(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input type="number" min="1" max="60" value={liftSpeedPerFloor} onChange={e => setLiftSpeedPerFloor(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500" />
                         <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">giây / tầng</span>
                       </div>
                     </div>

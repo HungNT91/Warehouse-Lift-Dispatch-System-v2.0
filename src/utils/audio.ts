@@ -144,9 +144,9 @@ export function speakLiftArrival(liftName: string, floor: number) {
 }
 
 /**
- * Warning announcement when cargo remains uncollected after 3 minutes (180s)
+ * Warning announcement when cargo remains uncollected after 2 minutes (120s)
  */
-export function speakUncollectedWarning(liftName: string, floor: number, minutes: number = 3) {
+export function speakUncollectedWarning(liftName: string, floor: number, minutes: number = 2) {
   const formattedLift = liftName.replace(/^Lift\s*/i, 'Thang P').replace(/^Tời\s*/i, 'Thang P');
   const message = `Cảnh báo! ${formattedLift} tại Tầng ${floor} chưa được kéo hàng quá ${minutes} phút. Yêu cầu điều phối kho Tầng ${floor} khẩn trương kéo hàng!`;
   speakText(message);

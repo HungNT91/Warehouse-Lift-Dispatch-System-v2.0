@@ -1247,9 +1247,9 @@ const initialMockDbData = {
       status_id: 3,
       has_cargo: true,
       current_job: 'j4',
-      last_update: new Date(Date.now() - 180000).toISOString(),
-      pickup_start_time: Date.now() - 180000,
-      note: 'Tồn hàng chờ dỡ tại Tầng 4 quá 3 phút',
+      last_update: new Date(Date.now() - 120000).toISOString(),
+      pickup_start_time: Date.now() - 120000,
+      note: 'Tồn hàng chờ dỡ tại Tầng 4 quá 2 phút',
       lock_type: 'NONE'
     },
     {
@@ -1440,7 +1440,7 @@ const initialMockDbData = {
       id: 2,
       setting_group: 'LIFT_RULES',
       setting_key: 'UNCOLLECTED_WARNING_TIMEOUT_SEC',
-      setting_value: '180',
+      setting_value: '120',
       value_type: 'NUMBER',
       description: 'Thời gian chờ dỡ hàng tối đa trước khi bắn chuông Telegram (giây)',
       updated_at: new Date().toISOString(),

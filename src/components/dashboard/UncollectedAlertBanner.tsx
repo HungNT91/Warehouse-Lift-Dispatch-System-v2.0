@@ -43,13 +43,13 @@ export const UncollectedAlertBanner: React.FC = () => {
         const elapsedSecs = Math.max(0, Math.floor((now - start) / 1000));
         newTimers[lift.id] = elapsedSecs;
 
-        // Auto trigger every 3-minute interval (>180s = 3m, >360s = 6m, >540s = 9m...) TTS Voice Announcement & Telegram Dispatch
-        const intervalNumber = Math.floor(elapsedSecs / 180);
+        // Auto trigger every 2-minute interval (>120s = 2m, >240s = 4m, >360s = 6m...) TTS Voice Announcement & Telegram Dispatch
+        const intervalNumber = Math.floor(elapsedSecs / 120);
         if (intervalNumber >= 1) {
           const lastWarned = lastWarnedIntervalRef.current[lift.id] || 0;
           if (intervalNumber > lastWarned) {
             lastWarnedIntervalRef.current[lift.id] = intervalNumber;
-            const minutes = intervalNumber * 3;
+            const minutes = intervalNumber * 2;
 
             // 1. Play Vietnamese Text-to-Speech Voice Warning ONLY for users assigned to this floor or Admins/Supervisors
             const userAssignedFloor = assignment?.assigned_floor;

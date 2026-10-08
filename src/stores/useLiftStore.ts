@@ -122,7 +122,7 @@ function processLiftsAndJobs(
     if (liftStatus === 'MOVING') {
       const startTime = safeParseTimestamp(d.last_update);
       const travelDist = (destFloor && srcFloor) ? Math.abs(destFloor - srcFloor) : 1;
-      const totalSecs = travelDist * 30; // 30s per floor
+      const totalSecs = travelDist * 20; // 20s per floor
       const elapsedSecs = Math.max(0, (Date.now() - startTime) / 1000);
       const calcProg = Math.floor((elapsedSecs / totalSecs) * 100);
       computedProgress = isNaN(calcProg) ? 0 : Math.min(99, Math.max(0, calcProg));

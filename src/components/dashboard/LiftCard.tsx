@@ -73,7 +73,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
     return `${m > 0 ? `${m}m ` : ''}${s < 10 ? '0' : ''}${s}s`;
   };
 
-  // Simulation for lift movement (30 seconds per floor)
+  // Simulation for lift movement (20 seconds per floor)
   useEffect(() => {
     let timer: any;
     const effectiveDestFloor = lift.destination_floor || (lift.source_floor ? (lift.current_floor === lift.source_floor ? (lift.source_floor === 1 ? 2 : 1) : lift.current_floor) : null);
@@ -81,7 +81,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
     if (lift.status === 'MOVING' && (lift.destination_floor || effectiveDestFloor)) {
       const destFloor = lift.destination_floor || effectiveDestFloor || lift.current_floor;
       const floorsToTravel = Math.abs(destFloor - lift.current_floor) || 1;
-      const totalSeconds = floorsToTravel * 30; // 30 seconds per floor
+      const totalSeconds = floorsToTravel * 20; // 20 seconds per floor
       const increment = 100 / totalSeconds;
 
       const currentProg = (typeof lift.progress === 'number' && !isNaN(lift.progress)) ? lift.progress : 0;
@@ -392,7 +392,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
               {theme.label}
             </span>
             {hasActiveFloorRestriction(lift) && (
-              <span 
+              <span
                 className="px-2 py-0.5 text-[9px] font-black rounded-full uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1"
                 title={`Chỉ hoạt động ở Tầng ${getEffectiveAllowedFloors(lift).join(', ')} (Thiết lập bởi: ${lift.restricted_by_name || 'Quản lý'})`}
               >
@@ -517,14 +517,20 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
 
         {/* Overlay for floor selection */}
         {showFloorSelector && (
-          <div className="absolute inset-0 bg-slate-900/90 z-10 flex flex-col items-center justify-center p-2 rounded-xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between w-full mb-2 px-2 items-center">
-              <span className="text-[10px] font-bold text-slate-300 uppercase">Chọn tầng đến từ Tầng {lift.current_floor}</span>
-              <button onClick={() => setShowFloorSelector(false)} className="text-slate-400 hover:text-white">
-                <X className="w-4 h-4" />
+          <div className="absolute inset-0 bg-slate-950/95 z-10 flex flex-col items-center justify-center p-2 rounded-xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between w-full mb-2 px-1 items-center">
+              <span className="text-[10px] font-extrabold text-slate-300 uppercase tracking-tight truncate">
+                Chọn tầng đến (từ T{lift.current_floor})
+              </span>
+              <button
+                onClick={() => setShowFloorSelector(false)}
+                className="text-slate-400 hover:text-white p-0.5 rounded transition-colors shrink-0"
+                title="Đóng"
+              >
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2 w-full">
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 w-full max-w-full px-1">
               {[1, 2, 3, 4].map(floor => {
                 const effectiveAllowed = getEffectiveAllowedFloors(lift);
                 const isAllowed = effectiveAllowed.includes(floor);
@@ -535,15 +541,20 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
                     disabled={isDisabled}
                     onClick={() => handleSendGoods(floor)}
                     className={cn(
-                      "py-1.5 rounded-lg text-sm font-bold border transition-colors relative cursor-pointer",
+                      "flex-1 max-w-[4rem] h-20 rounded-lg text-xs font-extrabold border transition-all relative cursor-pointer flex items-center justify-center text-center whitespace-nowrap shadow-xs",
                       isDisabled
-                        ? "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed"
-                        : "bg-blue-600 border-blue-500 text-white hover:bg-blue-500"
+                        ? "bg-slate-800/80 border-slate-700/60 text-slate-500 cursor-not-allowed"
+                        : "bg-blue-600 border-blue-500 text-white hover:bg-blue-500 active:scale-95"
                     )}
+                    title={
+                      !isAllowed
+                        ? `Tầng ${floor} đang bị giới hạn`
+                        : (floor === lift.current_floor ? `Tời đang ở Tầng ${floor}` : `Gửi hàng đến Tầng ${floor}`)
+                    }
                   >
-                    Tầng {floor}
+                    <span>Tầng {floor}</span>
                     {!isAllowed && (
-                      <Lock className="w-3 h-3 absolute top-1 right-1 text-amber-400 opacity-80" />
+                      <Lock className="w-2.5 h-2.5 absolute top-1 right-1 text-amber-400 opacity-90" />
                     )}
                   </button>
                 );
@@ -608,7 +619,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
               const userFloor = assignment?.assigned_floor;
               const isCurrentAllowed = effectiveAllowed.includes(lift.current_floor);
               const isUserFloorAllowed = userFloor ? effectiveAllowed.includes(userFloor) : isCurrentAllowed;
-              
+
               const isSendDisabled = !isAssignedLift || !isAssignedFloor || !isCurrentAllowed;
               const isCallDisabled = !isAssignedLift || (userFloor ? lift.current_floor === userFloor : false) || !isCurrentAllowed || !isUserFloorAllowed;
 

@@ -150,7 +150,7 @@ export function TelegramCenter() {
   const [targetGroup, setTargetGroup] = useState<string>('DEFAULT');
   const [targetLift, setTargetLift] = useState<string>('ALL');
   const [templateType, setTemplateType] = useState<string>('CUSTOM');
-  const [messageText, setMessageText] = useState<string>('<b>CẢNH BÁO TỒN ĐỌNG HÀNG</b>\nThang P3 tại Tầng 4 có đơn hàng chờ lấy quá 3 phút! Đội kho Tầng 4 vui lòng kiểm tra và kéo hàng ra khỏi thang gấp.');
+  const [messageText, setMessageText] = useState<string>('<b>CẢNH BÁO TỒN ĐỌNG HÀNG</b>\nThang P3 tại Tầng 4 có đơn hàng chờ lấy quá 2 phút! Đội kho Tầng 4 vui lòng kiểm tra và kéo hàng ra khỏi thang gấp.');
   const [enableTts, setEnableTts] = useState<boolean>(true);
   const [isSending, setIsSending] = useState<boolean>(false);
 
@@ -259,7 +259,7 @@ export function TelegramCenter() {
     switch (type) {
       case 'UNCOLLECTED':
         setMessageText(
-          `<b>CẢNH BÁO TỒN ĐỌNG HÀNG (>3 Phút)</b>\n` +
+          `<b>CẢNH BÁO TỒN ĐỌNG HÀNG (>2 Phút)</b>\n` +
           `<b>Vị trí:</b> ${liftName} - Tầng ${floorNum}\n` +
           `<b>Mã đơn:</b> #TR-8990 - Pallet Hàng\n` +
           `<b>Thời gian chờ:</b> 4 phút 25 giây\n` +
@@ -638,7 +638,7 @@ export function TelegramCenter() {
               </label>
               <div className="flex items-center gap-2 overflow-x-auto pb-1">
                 {[
-                  { id: 'UNCOLLECTED', label: '🚨 Cảnh báo tồn hàng >3m' },
+                  { id: 'UNCOLLECTED', label: '🚨 Cảnh báo tồn hàng >2m' },
                   { id: 'LIFT_ARRIVAL', label: '🔔 Chuông tời đến tầng' },
                   { id: 'MAINTENANCE', label: '⚠️ Báo sự cố / bảo trì' },
                   { id: 'URGENT_JOB', label: '🔴 Đơn vận chuyển hỏa tốc' },
@@ -1153,7 +1153,7 @@ export function TelegramCenter() {
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-500" />
                     <span className="text-xs font-extrabold text-slate-900 dark:text-white">
-                      Cảnh Báo Tồn Hàng &gt;3 Phút
+                      Cảnh Báo Tồn Hàng &gt;2 Phút
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500">

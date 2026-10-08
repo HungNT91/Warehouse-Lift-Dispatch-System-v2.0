@@ -173,7 +173,7 @@ export const NotificationsPage: React.FC = () => {
           <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/60 dark:border-slate-700/60 cursor-pointer">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-500" />
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Cảnh báo tồn hàng &gt;3 phút</span>
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Cảnh báo tồn hàng &gt;2 phút</span>
             </div>
             <input
               type="checkbox"
