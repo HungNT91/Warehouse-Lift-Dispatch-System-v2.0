@@ -45,7 +45,7 @@ const statusThemes: Record<string, { bg: string; text: string; label: string }> 
 };
 
 export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
-  lift,
+  lift: initialLift,
   isOpen,
   onClose,
   onEmergencyStop,
@@ -53,31 +53,49 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
   onToggleLock,
   onReportIssue
 }) => {
-  const { jobs } = useLiftStore();
+  const { jobs, lifts } = useLiftStore();
   const { user } = useAuthStore();
   const canLock = user?.role === 'Supervisor' || user?.role === 'Admin';
 
   if (!isOpen) return null;
+
+  // Sync with store's latest lift state
+  const lift = lifts.find(l => isSameLift(l.id, initialLift.id) || isSameLift(l.lift_number, initialLift.lift_number)) || initialLift;
+
+  // List of old static mock employee names to avoid displaying as real operators
+  const mockNames = ['Thanh H.', 'Hùng Đ.', 'Minh T.', 'Đội Kỹ Thuật', 'Phạm Lan Trang'];
 
   // Find jobs related to this lift using robust isSameLift matching
   const liftJobs = jobs
     .filter((j) => isSameLift(j.lift_id, lift.id) || isSameLift(j.lift_id, lift.lift_number))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  // Active job currently running or waiting
-  const activeJob = liftJobs.find(j =>
-    (lift.current_job_id && (j.id === lift.current_job_id || j.code === lift.current_job_id)) ||
-    ['MOVING', 'WAITING_PICKUP', 'CREATED'].includes(j.status)
-  ) || (lift.status !== 'AVAILABLE' && liftJobs.length > 0 ? liftJobs[0] : null);
+  // Active job currently running or waiting on this lift
+  const activeJob = lift.status === 'AVAILABLE'
+    ? null
+    : liftJobs.find(j =>
+        (lift.current_job_id && (j.id === lift.current_job_id || j.code === lift.current_job_id)) ||
+        ['MOVING', 'WAITING_PICKUP'].includes(j.status)
+      ) || null;
 
   // Derive real destination floor from lift state or active job
   const effectiveDestFloor = lift.destination_floor || activeJob?.target_floor || (activeJob as any)?.to_floor || null;
 
-  // Derive real operator name from active job creator, lift operator, or last job creator
-  const operatorName = activeJob?.creator_name
-    || lift.operator
-    || (liftJobs.length > 0 ? liftJobs[0].creator_name : null)
-    || (lift.status === 'AVAILABLE' ? 'Chưa có' : 'Nhân viên kho');
+  // Derive real operator name from lift operator, active job creator, or current user
+  let operatorName = 'Chưa có';
+  if (lift.status !== 'AVAILABLE') {
+    if (lift.operator && !mockNames.includes(lift.operator)) {
+      operatorName = lift.operator;
+    } else if (activeJob?.creator_name && !mockNames.includes(activeJob.creator_name)) {
+      operatorName = activeJob.creator_name;
+    } else if (user) {
+      operatorName = user.full_name || (user.role === 'Admin' ? 'Admin' : user.role === 'Supervisor' ? 'Giám sát kho' : 'Nhân viên kho');
+    } else if (lift.operator) {
+      operatorName = lift.operator;
+    } else {
+      operatorName = 'Nhân viên kho';
+    }
+  }
 
   const theme = statusThemes[lift.status] || statusThemes['AVAILABLE'];
   const isStoppedOrBlocked = ['STOPPED', 'MAINTENANCE', 'LOCKED', 'OFFLINE'].includes(lift.status);
@@ -253,7 +271,7 @@ export const LiftDetailsModal: React.FC<LiftDetailsModalProps> = ({
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[10px]">Người gửi:</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{activeJob.creator_name || 'Hệ thống'}</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{(!mockNames.includes(activeJob.creator_name || '')) ? (activeJob.creator_name || operatorName) : operatorName}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[10px]">Loại hàng:</span>

@@ -257,6 +257,8 @@ export async function processTelegramCommand(
     return { success: true, handled: false, isLocked: false, reason: 'Command not recognized' };
 }
 
+let hasLogged409 = false;
+
 /**
  * Background Long Polling update runner
  */
@@ -270,7 +272,10 @@ export async function pollTelegramUpdates() {
             const data = await res.json().catch(() => ({})) as any;
             if (data.error_code === 409) {
                 // 409 Conflict: Webhook is active! If webhook is active, getUpdates is disabled by Telegram.
-                console.warn('[Telegram Bot] 409 Conflict: Webhook is currently active on Telegram. Processing via Webhook endpoint instead.');
+                if (!hasLogged409) {
+                    hasLogged409 = true;
+                    console.warn('[Telegram Bot] 409 Conflict: Webhook is currently active on Telegram. Processing via Webhook endpoint instead.');
+                }
             }
             return;
         }

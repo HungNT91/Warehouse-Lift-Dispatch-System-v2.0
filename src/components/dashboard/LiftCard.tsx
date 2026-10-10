@@ -158,11 +158,13 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
     }
     setShowFloorSelector(false);
 
+    const currentOperator = user?.full_name?.trim() || (user?.role === 'Admin' ? 'Admin' : user?.role === 'Supervisor' ? 'Giám sát kho' : 'Nhân viên kho');
+
     // Save transport job to DB (transport_jobs)
     const createdJob = await addJob({
       lift_id: lift.id,
-      created_by: user?.id || 'u1',
-      creator_name: user?.full_name || 'Nhân viên kho',
+      created_by: user?.id || (user?.role === 'Admin' ? 'admin' : 'u1'),
+      creator_name: currentOperator,
       source_floor: lift.current_floor,
       target_floor: targetFloor,
       status: 'MOVING',
@@ -179,7 +181,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       destination_floor: targetFloor,
       progress: 0,
       current_job_id: realJobId || null,
-      operator: user?.full_name || 'Nhân viên kho'
+      operator: currentOperator
     });
 
     if (realJobId) {
@@ -207,10 +209,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       const target = lift.source_floor;
 
       // Log return transport job to DB
+      const currentOperator = user?.full_name?.trim() || (user?.role === 'Admin' ? 'Admin' : user?.role === 'Supervisor' ? 'Giám sát kho' : 'Nhân viên kho');
       const returnJob = await addJob({
         lift_id: lift.id,
-        created_by: user?.id || 'u1',
-        creator_name: user?.full_name || 'Nhân viên kho',
+        created_by: user?.id || (user?.role === 'Admin' ? 'admin' : 'u1'),
+        creator_name: currentOperator,
         source_floor: lift.current_floor,
         target_floor: target,
         status: 'MOVING',
@@ -228,7 +231,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         pickup_start_time: null,
         progress: 0,
         current_job_id: returnJobId || null,
-        operator: user?.full_name || 'Nhân viên kho'
+        operator: currentOperator
       });
 
       if (returnJobId) {
@@ -269,10 +272,11 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       return;
     }
 
+    const currentOperator = user?.full_name?.trim() || (user?.role === 'Admin' ? 'Admin' : user?.role === 'Supervisor' ? 'Giám sát kho' : 'Nhân viên kho');
     const createdJob = await addJob({
       lift_id: lift.id,
-      created_by: user?.id || 'u1',
-      creator_name: user?.full_name || 'Nhân viên kho',
+      created_by: user?.id || (user?.role === 'Admin' ? 'admin' : 'u1'),
+      creator_name: currentOperator,
       source_floor: lift.current_floor,
       target_floor: assignment.assigned_floor,
       status: 'MOVING',
@@ -289,7 +293,7 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       source_floor: lift.current_floor,
       progress: 0,
       current_job_id: realJobId || null,
-      operator: user?.full_name || 'Nhân viên kho'
+      operator: currentOperator
     });
 
     if (realJobId) {

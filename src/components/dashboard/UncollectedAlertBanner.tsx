@@ -98,10 +98,11 @@ export const UncollectedAlertBanner: React.FC = () => {
     }
 
     if (returnToSource && lift.source_floor && lift.source_floor !== lift.current_floor) {
+      const currentOperator = user?.full_name?.trim() || (user?.role === 'Admin' ? 'Admin' : user?.role === 'Supervisor' ? 'Giám sát kho' : 'Nhân viên kho');
       const returnJob = await addJob({
         lift_id: lift.id,
-        created_by: user?.id || 'u1',
-        creator_name: user?.full_name || 'Nhân viên kho',
+        created_by: user?.id || (user?.role === 'Admin' ? 'admin' : 'u1'),
+        creator_name: currentOperator,
         source_floor: lift.current_floor,
         target_floor: lift.source_floor,
         status: 'MOVING',
@@ -119,7 +120,7 @@ export const UncollectedAlertBanner: React.FC = () => {
         pickup_start_time: null,
         progress: 0,
         current_job_id: returnJobId || null,
-        operator: user?.full_name || 'Nhân viên kho'
+        operator: currentOperator
       });
 
       if (returnJobId) {
