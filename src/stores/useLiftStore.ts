@@ -630,7 +630,10 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       }
     }
 
-    const newCode = `TR-${Math.floor(8900 + Math.random() * 200)}`;
+    const d = new Date();
+    const timeSeq = `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
+    const randSeq = Math.floor(100 + Math.random() * 900);
+    const newCode = `TR-${timeSeq}-${randSeq}`;
     const newJob: Job = {
       id: `job-${Date.now()}`,
       code: newCode,

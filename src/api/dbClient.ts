@@ -875,9 +875,21 @@ export const db = {
         for (let i = 0; i < candidatePayloads.length; i++) {
           const payload = candidatePayloads[i];
           try {
-            const { data, error } = await supabase.from('transport_jobs').insert([payload]).select().single();
+            let { data, error } = await supabase.from('transport_jobs').insert([payload]).select().single();
+            
+            // Xử lý LỖI 4: duplicate key value violates unique constraint "transport_jobs_job_no_key"
+            if (error && (error.code === '23505' || error.message.includes('job_no_key') || error.message.includes('unique constraint'))) {
+              const freshJobNo = `TR-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+              console.warn(`⚠️ [Supabase transport_jobs] Trùng mã đơn ${payload.job_no}, tự sinh mã mới ${freshJobNo} và thử lại...`);
+              payload.job_no = freshJobNo;
+              newJob.job_no = freshJobNo;
+              const retryUnique = await supabase.from('transport_jobs').insert([payload]).select().single();
+              data = retryUnique.data;
+              error = retryUnique.error;
+            }
+
             if (!error && data) {
-              console.log(`✅ [Supabase transport_jobs] Đã lưu thành công đơn #${jobNo} ở lượt thử ${i + 1}:`, data);
+              console.log(`✅ [Supabase transport_jobs] Đã lưu thành công đơn #${payload.job_no} ở lượt thử ${i + 1}:`, data);
               savedData = data;
               break;
             } else if (error) {
@@ -954,28 +966,50 @@ export const db = {
       }
     },
     async create(timelineItem: Omit<DbJobTimeline, 'id' | 'action_time'>): Promise<DbJobTimeline> {
-      let resolvedJobUuid = isUuid(timelineItem.job_id) ? timelineItem.job_id : null;
-      if (!resolvedJobUuid) {
-        const matchedJob = mockDbData.transportJobs.find(j => j.id === timelineItem.job_id || j.job_no === timelineItem.job_id);
-        if (matchedJob && isUuid(matchedJob.id)) {
-          resolvedJobUuid = matchedJob.id;
-        }
+      // Xác định job_id an toàn (tránh lỗi invalid input syntax for type bigint)
+      let resolvedJobIdVal: any = null;
+      if (typeof timelineItem.job_id === 'number') {
+        resolvedJobIdVal = timelineItem.job_id;
+      } else if (typeof timelineItem.job_id === 'string' && /^\d+$/.test(timelineItem.job_id)) {
+        resolvedJobIdVal = parseInt(timelineItem.job_id, 10);
+      } else if (isUuid(timelineItem.job_id)) {
+        resolvedJobIdVal = timelineItem.job_id;
       }
 
       const newItem: DbJobTimeline = {
         id: crypto.randomUUID(),
         action_time: new Date().toISOString(),
-        job_id: resolvedJobUuid || crypto.randomUUID(),
+        job_id: resolvedJobIdVal || timelineItem.job_id,
         status: timelineItem.status || 'UPDATED',
         action_by: resolveUserUuid(timelineItem.action_by),
         remark: timelineItem.remark || null
       };
 
-      if (isSupabaseConfigured() && resolvedJobUuid) {
+      if (isSupabaseConfigured()) {
         try {
-          const { data, error } = await getSupabase().from('job_timeline').insert([newItem]).select().single();
+          // Lần 1: Thử insert không truyền cột id (để PostgreSQL tự sinh id)
+          const payload: any = {
+            action_time: newItem.action_time,
+            status: newItem.status,
+            action_by: newItem.action_by,
+            remark: newItem.remark
+          };
+          if (resolvedJobIdVal !== null) {
+            payload.job_id = resolvedJobIdVal;
+          }
+
+          const { data, error } = await getSupabase().from('job_timeline').insert([payload]).select().single();
           if (error) {
-            console.warn('Supabase error creating job_timeline:', error.message);
+            console.warn('Supabase job_timeline insert warning:', error.message);
+            // Lần 2: Nếu lỗi bigint hoặc foreign key, thử insert với job_id: null
+            if (error.code === '22P02' || error.code === '23503' || error.message.includes('bigint') || error.message.includes('foreign key')) {
+              const retry = await getSupabase().from('job_timeline').insert([{ ...payload, job_id: null }]).select().single();
+              if (retry.data) {
+                mockDbData.jobTimeline.push(retry.data);
+                saveMockData();
+                return retry.data;
+              }
+            }
           } else if (data) {
             mockDbData.jobTimeline.push(data);
             saveMockData();
@@ -1069,8 +1103,16 @@ export const db = {
         resolvedUserId = cachedUsers[0]?.id || null;
       }
 
-      // Check record_id: Supabase expects valid UUID or null for the record_id column
-      const validRecordUuid = (activity.record_id && isUuid(activity.record_id)) ? activity.record_id : null;
+      // Safe record_id: hỗ trợ cả bigint ID và UUID ID, tránh lỗi 22P02 bigint syntax
+      let safeRecordId: any = null;
+      if (activity.record_id !== undefined && activity.record_id !== null) {
+        const recStr = String(activity.record_id).trim();
+        if (/^\d+$/.test(recStr)) {
+          safeRecordId = parseInt(recStr, 10);
+        } else if (isUuid(recStr)) {
+          safeRecordId = recStr;
+        }
+      }
 
       const newActivity: DbActivityLog = {
         id: Math.floor(Date.now() / 1000) + Math.floor(Math.random() * 1000),
@@ -1082,21 +1124,25 @@ export const db = {
 
       if (isSupabaseConfigured()) {
         try {
-          const { data, error } = await getSupabase().from('activity_logs').insert([{
+          const payload: any = {
             user_id: resolvedUserId,
             action: newActivity.action,
             table_name: newActivity.table_name,
-            record_id: validRecordUuid,
             description: newActivity.description,
             event_type: newActivity.event_type || 'SYSTEM_EVENT'
-          }]).select().single();
+          };
+          if (safeRecordId !== null) {
+            payload.record_id = safeRecordId;
+          }
+
+          const { data, error } = await getSupabase().from('activity_logs').insert([payload]).select().single();
 
           if (!error && data) {
             mockDbData.activityLogs.unshift(data);
             saveMockData();
             return data;
           } else if (error) {
-            console.warn('Supabase error creating activity_log:', error.message);
+            console.warn('Supabase error creating activity_log (attempt 1):', error.message);
             // Universal retry with user_id: null & record_id: null if FK or column constraint failed
             const { data: retryData, error: retryErr } = await getSupabase().from('activity_logs').insert([{
               user_id: null,
@@ -1188,38 +1234,75 @@ export const db = {
       return data || [];
     },
     async create(notification: Omit<DbNotification, 'id' | 'created_at'>): Promise<DbNotification> {
-      let resolvedJobUuid = isUuid(notification.job_id) ? notification.job_id : null;
-      if (!resolvedJobUuid && notification.job_id) {
-        const matchedJob = mockDbData.transportJobs.find(j => j.id === notification.job_id || j.job_no === notification.job_id);
-        if (matchedJob && isUuid(matchedJob.id)) {
-          resolvedJobUuid = matchedJob.id;
+      // 1. Xác định job_id an toàn (hỗ trợ cả bigint ID và UUID, giải quyết LỖI 2 và LỖI 3)
+      let resolvedJobId: any = null;
+      if (notification.job_id !== undefined && notification.job_id !== null) {
+        const jIdStr = String(notification.job_id).trim();
+        if (/^\d+$/.test(jIdStr)) {
+          resolvedJobId = parseInt(jIdStr, 10);
+        } else if (isUuid(jIdStr)) {
+          resolvedJobId = jIdStr;
         }
       }
 
+      const clientUuid = crypto.randomUUID();
       const newNotif: DbNotification = {
-        id: crypto.randomUUID(),
+        id: clientUuid,
         created_at: new Date().toISOString(),
-        job_id: resolvedJobUuid,
+        job_id: resolvedJobId ? String(resolvedJobId) : null,
         receiver_id: resolveUserUuid(notification.receiver_id),
         notification_type: notification.notification_type || 'INFO',
         title: notification.title || '',
         message: notification.message || '',
         status: notification.status || 'SENT'
       };
+
       if (isSupabaseConfigured()) {
         try {
-          const { data, error } = await getSupabase().from('notifications').insert([newNotif]).select().single();
-          if (error) {
-            console.warn('Supabase error creating notification:', error.message);
-          } else if (data) {
+          // Lần 1: Không gửi cột 'id' (để PostgreSQL tự sinh nếu id là bigint/BIGSERIAL hoặc gen_random_uuid)
+          const basePayload: any = {
+            receiver_id: newNotif.receiver_id,
+            notification_type: newNotif.notification_type,
+            title: newNotif.title,
+            message: newNotif.message,
+            status: newNotif.status,
+            created_at: newNotif.created_at
+          };
+          if (resolvedJobId !== null) {
+            basePayload.job_id = resolvedJobId;
+          }
+
+          let { data, error } = await getSupabase().from('notifications').insert([basePayload]).select().single();
+
+          // Lần 2: Xử lý LỖI 2 (notifications_job_id_fkey) hoặc LỖI 3 (invalid input syntax for type bigint)
+          if (error && (error.code === '23503' || error.code === '22P02' || error.message.includes('job_id') || error.message.includes('foreign key') || error.message.includes('bigint'))) {
+            console.warn('⚠️ [Supabase notifications] FK hoặc bigint mismatch, retry với job_id: null:', error.message);
+            const retryPayload = { ...basePayload, job_id: null };
+            const retryRes = await getSupabase().from('notifications').insert([retryPayload]).select().single();
+            data = retryRes.data;
+            error = retryRes.error;
+          }
+
+          // Lần 3: Nếu bảng yêu cầu id do client cung cấp (cột id NOT NULL không có default)
+          if (error && (error.code === '23502' || error.message.includes('null value in column "id"'))) {
+            const uuidPayload = { ...basePayload, id: clientUuid, job_id: null };
+            const retryUuid = await getSupabase().from('notifications').insert([uuidPayload]).select().single();
+            data = retryUuid.data;
+            error = retryUuid.error;
+          }
+
+          if (!error && data) {
             mockDbData.notifications.unshift(data);
             saveMockData();
             return data;
+          } else if (error) {
+            console.warn('Supabase error creating notification:', error.message);
           }
         } catch (e) {
           console.warn('Supabase exception creating notification:', e);
         }
       }
+
       mockDbData.notifications.unshift(newNotif);
       saveMockData();
       return newNotif;
