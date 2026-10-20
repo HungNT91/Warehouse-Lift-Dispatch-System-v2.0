@@ -309,7 +309,14 @@ function processLiftsAndJobs(
     };
   });
 
-  return { mergedLifts, mappedJobs };
+  // Giữ lại các job trong currentJobs chưa có trong mappedJobs để không bao giờ bị mất đơn khi polling định kỳ
+  const existingJobCodes = new Set(mappedJobs.map(j => j.code || j.id));
+  const retainedCurrentJobs = currentJobs.filter(cj => !existingJobCodes.has(cj.code || cj.id));
+  const finalMergedJobs = [...mappedJobs, ...retainedCurrentJobs].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  return { mergedLifts, mappedJobs: finalMergedJobs };
 }
 
 export const useLiftStore = create<LiftState>((set, get) => ({

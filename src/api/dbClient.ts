@@ -754,17 +754,30 @@ export const db = {
       const fromFloorUuid = resolveFloorUuid(job.from_floor);
       const toFloorUuid = resolveFloorUuid(job.to_floor);
 
+      // Parse floor number (1..4)
+      const srcNum = typeof job.from_floor === 'number'
+        ? job.from_floor
+        : parseInt(String(job.from_floor || '').replace(/[^0-9]/g, ''), 10) || 1;
+      const dstNum = typeof job.to_floor === 'number'
+        ? job.to_floor
+        : parseInt(String(job.to_floor || '').replace(/[^0-9]/g, ''), 10) || 2;
+
+      const jobNo = job.job_no || `TR-${Math.floor(1000 + Math.random() * 9000)}`;
+      const nowIso = new Date().toISOString();
+      const statusStr = job.status || 'CREATED';
+      const remarkStr = job.remark || null;
+
       const newJob: DbTransportJob = {
         id: crypto.randomUUID(),
-        created_at: new Date().toISOString(),
-        job_no: job.job_no || `TR-${Math.floor(1000 + Math.random() * 9000)}`,
+        created_at: nowIso,
+        job_no: jobNo,
         lift_id: liftUuid,
         from_floor: fromFloorUuid,
         to_floor: toFloorUuid,
         sender_id: senderUuid,
         receiver_id: receiverUuid,
-        status: job.status || 'CREATED',
-        remark: job.remark || null
+        status: statusStr,
+        remark: remarkStr
       };
 
       // 1. Luôn lưu vào Local Storage ngay lập tức để không bao giờ bị mất dữ liệu
@@ -774,72 +787,115 @@ export const db = {
         saveMockData();
       }
 
-      // 2. Lưu vào Supabase với chiến lược Multi-Stage Retry Fallback
+      // 2. Lưu vào Supabase với chuỗi biến thể payload tự thích ứng (Adaptive Multi-Attempt)
+      // Chú ý: KHÔNG gửi `id` để PostgreSQL tự sinh ID (dù id là BIGSERIAL hay UUID gen_random_uuid())
       if (isSupabaseConfigured()) {
-        try {
-          // Lần 1: Thử insert đầy đủ
-          const { data, error } = await getSupabase().from('transport_jobs').insert([newJob]).select().single();
-          if (!error && data) {
-            console.log('✅ Đã lưu thành công đơn vào Supabase transport_jobs:', data);
-            const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
-            if (idx !== -1) mockDbData.transportJobs[idx] = data;
-            saveMockData();
-            return data;
+        const supabase = getSupabase();
+
+        // Lấy ID thực tế từ database nếu có
+        let validLiftId: string | null = cachedLifts[0]?.id || null;
+        let validFloorId: string | null = cachedFloors[0]?.id || null;
+        let validUserId: string | null = cachedUsers[0]?.id || null;
+
+        if (!validLiftId || !validFloorId) {
+          try {
+            const { data: dbLifts } = await supabase.from('lifts').select('id').limit(1);
+            if (dbLifts && dbLifts.length > 0) validLiftId = dbLifts[0].id;
+            const { data: dbFloors } = await supabase.from('floors').select('id').limit(1);
+            if (dbFloors && dbFloors.length > 0) validFloorId = dbFloors[0].id;
+            const { data: dbUsers } = await supabase.from('users').select('id').limit(1);
+            if (dbUsers && dbUsers.length > 0) validUserId = dbUsers[0].id;
+          } catch { }
+        }
+
+        const candidatePayloads: Record<string, any>[] = [
+          // Lượt 1: Schema chuẩn UUID (KHÔNG truyền id để tránh lỗi bigint/uuid)
+          {
+            job_no: jobNo,
+            lift_id: liftUuid,
+            from_floor: fromFloorUuid,
+            to_floor: toFloorUuid,
+            sender_id: senderUuid,
+            receiver_id: receiverUuid,
+            status: statusStr,
+            remark: remarkStr,
+            created_at: nowIso
+          },
+          // Lượt 2: Bỏ FK user sender_id / receiver_id (vượt qua lỗi 23503 users)
+          {
+            job_no: jobNo,
+            lift_id: liftUuid,
+            from_floor: fromFloorUuid,
+            to_floor: toFloorUuid,
+            status: statusStr,
+            remark: remarkStr,
+            created_at: nowIso
+          },
+          // Lượt 3: Sử dụng ID thực tế trực tiếp từ DB cho lift_id và floor
+          ...(validLiftId && validFloorId ? [{
+            job_no: jobNo,
+            lift_id: validLiftId,
+            from_floor: validFloorId,
+            to_floor: validFloorId,
+            status: statusStr,
+            remark: remarkStr,
+            created_at: nowIso
+          }] : []),
+          // Lượt 4: Schema dùng tầng số nguyên int4 (1, 2) và lift_id string ('L1')
+          {
+            job_no: jobNo,
+            lift_id: String(job.lift_id || 'L1'),
+            from_floor: srcNum,
+            to_floor: dstNum,
+            status: statusStr,
+            remark: remarkStr,
+            created_at: nowIso
+          },
+          // Lượt 5: Schema dùng created_by thay vì sender_id, và notes thay vì remark
+          {
+            job_no: jobNo,
+            lift_id: validLiftId || String(job.lift_id || 'L1'),
+            from_floor: validFloorId || srcNum,
+            to_floor: validFloorId || dstNum,
+            created_by: validUserId || null,
+            status: statusStr,
+            notes: remarkStr,
+            created_at: nowIso
+          },
+          // Lượt 6: Siêu tối giản (chỉ các cột cơ bản nhất)
+          {
+            job_no: jobNo,
+            status: statusStr,
+            remark: remarkStr,
+            created_at: nowIso
           }
+        ];
 
-          if (error) {
-            console.warn('⚠️ Lần 1 lưu transport_jobs thất bại:', error.message);
-
-            // Lần 2: Nếu lỗi Foreign Key (23503), thử bỏ sender_id và receiver_id về null
-            if (error.message.includes('foreign key') || error.code === '23503') {
-              const retryPayload1 = {
-                ...newJob,
-                sender_id: null,
-                receiver_id: null
-              };
-              const retry1 = await getSupabase().from('transport_jobs').insert([retryPayload1]).select().single();
-              if (!retry1.error && retry1.data) {
-                console.log('✅ Retry 1 thành công (bỏ user FK):', retry1.data);
-                const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
-                if (idx !== -1) mockDbData.transportJobs[idx] = retry1.data;
-                saveMockData();
-                return retry1.data;
-              }
-
-              // Lần 3: Nếu lift_id hoặc floor FK vẫn vi phạm, lấy ID hợp lệ trực tiếp từ database
-              console.warn('⚠️ Lần 2 lưu transport_jobs thất bại, thử Retry 2 với DB keys thực tế:', retry1.error?.message);
-              let validLiftId: string | null = cachedLifts[0]?.id || null;
-              let validFloorId: string | null = cachedFloors[0]?.id || null;
-
-              if (!validLiftId || !validFloorId) {
-                try {
-                  const { data: dbLifts } = await getSupabase().from('lifts').select('id').limit(1);
-                  if (dbLifts && dbLifts.length > 0) validLiftId = dbLifts[0].id;
-                  const { data: dbFloors } = await getSupabase().from('floors').select('id').limit(1);
-                  if (dbFloors && dbFloors.length > 0) validFloorId = dbFloors[0].id;
-                } catch { }
-              }
-
-              const retryPayload2 = {
-                ...newJob,
-                lift_id: validLiftId || newJob.lift_id,
-                from_floor: validFloorId || newJob.from_floor,
-                to_floor: validFloorId || newJob.to_floor,
-                sender_id: null,
-                receiver_id: null
-              };
-              const retry2 = await getSupabase().from('transport_jobs').insert([retryPayload2]).select().single();
-              if (!retry2.error && retry2.data) {
-                console.log('✅ Retry 2 thành công với DB keys thực tế:', retry2.data);
-                const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
-                if (idx !== -1) mockDbData.transportJobs[idx] = retry2.data;
-                saveMockData();
-                return retry2.data;
-              }
+        let savedData: any = null;
+        for (let i = 0; i < candidatePayloads.length; i++) {
+          const payload = candidatePayloads[i];
+          try {
+            const { data, error } = await supabase.from('transport_jobs').insert([payload]).select().single();
+            if (!error && data) {
+              console.log(`✅ [Supabase transport_jobs] Đã lưu thành công đơn #${jobNo} ở lượt thử ${i + 1}:`, data);
+              savedData = data;
+              break;
+            } else if (error) {
+              console.warn(`[Supabase transport_jobs] Lượt thử ${i + 1} gặp lỗi:`, error.message, error.code);
             }
+          } catch (e) {
+            console.warn(`[Supabase transport_jobs] Exception lượt thử ${i + 1}:`, e);
           }
-        } catch (e) {
-          console.warn('Supabase exception creating transport_job:', e);
+        }
+
+        if (savedData) {
+          const finalJob = { ...newJob, ...savedData };
+          const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
+          if (idx !== -1) mockDbData.transportJobs[idx] = finalJob;
+          saveMockData();
+          return finalJob;
+        } else {
+          console.error(`❌ [Supabase transport_jobs] Tất cả ${candidatePayloads.length} lượt thử lưu đều không thành công. Đơn hàng được giữ an toàn trong Local Storage.`);
         }
       }
 
