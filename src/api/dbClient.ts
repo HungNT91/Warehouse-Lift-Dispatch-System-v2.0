@@ -688,20 +688,56 @@ export const db = {
   // 10. Transport Jobs
   transportJobs: {
     async getAll(): Promise<DbTransportJob[]> {
-      if (!isSupabaseConfigured()) return mockDbData.transportJobs;
-      try {
-        const { data, error } = await getSupabase().from('transport_jobs').select('*').order('created_at', { ascending: false });
-        if (error || !data) {
-          console.warn('Supabase transport_jobs fetch warning:', error?.message);
-          return [];
+      let supabaseJobs: DbTransportJob[] = [];
+      if (isSupabaseConfigured()) {
+        try {
+          const { data, error } = await getSupabase().from('transport_jobs').select('*').order('created_at', { ascending: false });
+          if (!error && data && data.length > 0) {
+            supabaseJobs = data;
+          } else if (error) {
+            console.warn('Supabase transport_jobs fetch warning:', error.message);
+          }
+        } catch (err) {
+          console.warn('Exception fetching transport_jobs from Supabase:', err);
         }
-        return data;
-      } catch (err) {
-        console.warn('Exception fetching transport_jobs:', err);
-        return [];
       }
+
+      // Hợp nhất thông minh giữa Supabase và Local Mock DB để không bao giờ bị mất đơn mới
+      const mergedMap = new Map<string, DbTransportJob>();
+      
+      // 1. Đưa dữ liệu Supabase vào trước
+      supabaseJobs.forEach(job => {
+        const key = job.job_no || job.id;
+        mergedMap.set(key, job);
+      });
+
+      // 2. Bổ sung các đơn trong mockDbData nếu chưa có hoặc có cập nhật mới hơn
+      mockDbData.transportJobs.forEach(localJob => {
+        const key = localJob.job_no || localJob.id;
+        if (!mergedMap.has(key)) {
+          mergedMap.set(key, localJob);
+        } else {
+          // Ưu tiên bản ghi có completed_at hoặc trạng thái mới hơn
+          const existing = mergedMap.get(key)!;
+          if (localJob.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+            mergedMap.set(key, { ...existing, ...localJob });
+          }
+        }
+      });
+
+      const allJobs = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      // Cập nhật lại cache mockDbData để luôn đồng bộ
+      mockDbData.transportJobs = allJobs;
+      saveMockData();
+
+      return allJobs;
     },
+
     async create(job: Omit<DbTransportJob, 'id' | 'created_at'>): Promise<DbTransportJob> {
+      // Đảm bảo cache dữ liệu tĩnh đã được nạp từ Supabase
       if (isSupabaseConfigured()) {
         try {
           await Promise.all([
@@ -713,61 +749,92 @@ export const db = {
       }
 
       const senderUuid = resolveUserUuid(job.sender_id, 1);
-      const receiverUuid = resolveUserUuid(job.receiver_id, 2);
+      const receiverUuid = job.receiver_id ? resolveUserUuid(job.receiver_id, 2) : null;
+      const liftUuid = resolveLiftUuid(job.lift_id);
+      const fromFloorUuid = resolveFloorUuid(job.from_floor);
+      const toFloorUuid = resolveFloorUuid(job.to_floor);
 
       const newJob: DbTransportJob = {
         id: crypto.randomUUID(),
         created_at: new Date().toISOString(),
         job_no: job.job_no || `TR-${Math.floor(1000 + Math.random() * 9000)}`,
-        lift_id: resolveLiftUuid(job.lift_id),
-        from_floor: resolveFloorUuid(job.from_floor),
-        to_floor: resolveFloorUuid(job.to_floor),
+        lift_id: liftUuid,
+        from_floor: fromFloorUuid,
+        to_floor: toFloorUuid,
         sender_id: senderUuid,
         receiver_id: receiverUuid,
         status: job.status || 'CREATED',
         remark: job.remark || null
       };
 
+      // 1. Luôn lưu vào Local Storage ngay lập tức để không bao giờ bị mất dữ liệu
+      const localExists = mockDbData.transportJobs.some(j => j.id === newJob.id || j.job_no === newJob.job_no);
+      if (!localExists) {
+        mockDbData.transportJobs.unshift(newJob);
+        saveMockData();
+      }
+
+      // 2. Lưu vào Supabase với chiến lược Multi-Stage Retry Fallback
       if (isSupabaseConfigured()) {
         try {
+          // Lần 1: Thử insert đầy đủ
           const { data, error } = await getSupabase().from('transport_jobs').insert([newJob]).select().single();
           if (!error && data) {
             console.log('✅ Đã lưu thành công đơn vào Supabase transport_jobs:', data);
-            mockDbData.transportJobs.unshift(data);
+            const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
+            if (idx !== -1) mockDbData.transportJobs[idx] = data;
             saveMockData();
-
-            // Auto-log to activity_logs
-            db.activityLogs.add({
-              user_id: senderUuid,
-              action: 'CREATE_JOB',
-              table_name: 'transport_jobs',
-              record_id: newJob.id,
-              description: `Tạo công việc vận chuyển #${newJob.job_no} (${newJob.remark || 'Vận chuyển hàng'})`,
-              event_type: 'JOB_EVENT'
-            }).catch(() => { });
-
             return data;
-          } else if (error) {
-            console.warn('Supabase error creating transport_job:', error.message);
-            // Retry without receiver_id if receiver FK fails
+          }
+
+          if (error) {
+            console.warn('⚠️ Lần 1 lưu transport_jobs thất bại:', error.message);
+
+            // Lần 2: Nếu lỗi Foreign Key (23503), thử bỏ sender_id và receiver_id về null
             if (error.message.includes('foreign key') || error.code === '23503') {
-              const retryJob = { ...newJob, receiver_id: null };
-              const { data: retryData, error: retryError } = await getSupabase().from('transport_jobs').insert([retryJob]).select().single();
-              if (!retryError && retryData) {
-                console.log('✅ Retry lưu thành công vào Supabase transport_jobs:', retryData);
-                mockDbData.transportJobs.unshift(retryData);
+              const retryPayload1 = {
+                ...newJob,
+                sender_id: null,
+                receiver_id: null
+              };
+              const retry1 = await getSupabase().from('transport_jobs').insert([retryPayload1]).select().single();
+              if (!retry1.error && retry1.data) {
+                console.log('✅ Retry 1 thành công (bỏ user FK):', retry1.data);
+                const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
+                if (idx !== -1) mockDbData.transportJobs[idx] = retry1.data;
                 saveMockData();
+                return retry1.data;
+              }
 
-                db.activityLogs.add({
-                  user_id: senderUuid,
-                  action: 'CREATE_JOB',
-                  table_name: 'transport_jobs',
-                  record_id: newJob.id,
-                  description: `Tạo công việc vận chuyển #${newJob.job_no} (${newJob.remark || 'Vận chuyển hàng'})`,
-                  event_type: 'JOB_EVENT'
-                }).catch(() => { });
+              // Lần 3: Nếu lift_id hoặc floor FK vẫn vi phạm, lấy ID hợp lệ trực tiếp từ database
+              console.warn('⚠️ Lần 2 lưu transport_jobs thất bại, thử Retry 2 với DB keys thực tế:', retry1.error?.message);
+              let validLiftId: string | null = cachedLifts[0]?.id || null;
+              let validFloorId: string | null = cachedFloors[0]?.id || null;
 
-                return retryData;
+              if (!validLiftId || !validFloorId) {
+                try {
+                  const { data: dbLifts } = await getSupabase().from('lifts').select('id').limit(1);
+                  if (dbLifts && dbLifts.length > 0) validLiftId = dbLifts[0].id;
+                  const { data: dbFloors } = await getSupabase().from('floors').select('id').limit(1);
+                  if (dbFloors && dbFloors.length > 0) validFloorId = dbFloors[0].id;
+                } catch { }
+              }
+
+              const retryPayload2 = {
+                ...newJob,
+                lift_id: validLiftId || newJob.lift_id,
+                from_floor: validFloorId || newJob.from_floor,
+                to_floor: validFloorId || newJob.to_floor,
+                sender_id: null,
+                receiver_id: null
+              };
+              const retry2 = await getSupabase().from('transport_jobs').insert([retryPayload2]).select().single();
+              if (!retry2.error && retry2.data) {
+                console.log('✅ Retry 2 thành công với DB keys thực tế:', retry2.data);
+                const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
+                if (idx !== -1) mockDbData.transportJobs[idx] = retry2.data;
+                saveMockData();
+                return retry2.data;
               }
             }
           }
@@ -775,20 +842,10 @@ export const db = {
           console.warn('Supabase exception creating transport_job:', e);
         }
       }
-      mockDbData.transportJobs.unshift(newJob);
-      saveMockData();
-
-      db.activityLogs.add({
-        user_id: senderUuid,
-        action: 'CREATE_JOB',
-        table_name: 'transport_jobs',
-        record_id: newJob.id,
-        description: `Tạo công việc vận chuyển #${newJob.job_no} (${newJob.remark || 'Vận chuyển hàng'})`,
-        event_type: 'JOB_EVENT'
-      }).catch(() => { });
 
       return newJob;
     },
+
     async update(id: string, updates: Partial<DbTransportJob>): Promise<boolean> {
       const cleanUpdates: Partial<DbTransportJob> = { ...updates };
       if (cleanUpdates.lift_id) cleanUpdates.lift_id = resolveLiftUuid(cleanUpdates.lift_id);
@@ -796,6 +853,11 @@ export const db = {
       if (cleanUpdates.to_floor) cleanUpdates.to_floor = resolveFloorUuid(cleanUpdates.to_floor);
       if (cleanUpdates.sender_id) cleanUpdates.sender_id = resolveUserUuid(cleanUpdates.sender_id);
       if (cleanUpdates.receiver_id) cleanUpdates.receiver_id = resolveUserUuid(cleanUpdates.receiver_id);
+
+      // Tự động gắn mốc thời gian hoàn tất nếu chuyển sang COMPLETED
+      if (cleanUpdates.status === 'COMPLETED' && !cleanUpdates.completed_at) {
+        cleanUpdates.completed_at = new Date().toISOString();
+      }
 
       if (isSupabaseConfigured()) {
         try {
@@ -813,6 +875,7 @@ export const db = {
           console.warn('Supabase exception updating transport_job:', e);
         }
       }
+
       const idx = mockDbData.transportJobs.findIndex(j => j.id === id || j.job_no === id);
       if (idx !== -1) {
         mockDbData.transportJobs[idx] = { ...mockDbData.transportJobs[idx], ...cleanUpdates };

@@ -167,23 +167,32 @@ function processLiftsAndJobs(
     };
   });
 
-  const mappedJobs: Job[] = dbJobs.map(j => ({
-    id: j.id,
-    code: j.job_no || j.id,
-    lift_id: j.lift_id || 'L1',
-    lift_number: dbLifts.find(l => l.id === j.lift_id)?.lift_name || j.lift_id || 'Thang P1',
-    created_by: j.sender_id || 'u1',
-    creator_name: (j.sender_id && userMap[j.sender_id]) ? userMap[j.sender_id] : 'Nhân viên kho',
-    source_floor: parseFloorWithMap(j.from_floor, floorMap),
-    target_floor: parseFloorWithMap(j.to_floor, floorMap),
-    status: (j.status as any) || 'CREATED',
-    priority: 'NORMAL',
-    item_type: j.remark || 'Pallet Hàng',
-    quantity: 1,
-    notes: j.remark || '',
-    created_at: j.created_at,
-    updated_at: j.created_at
-  }));
+  const mappedJobs: Job[] = dbJobs.map(j => {
+    const remarkStr = j.remark || '';
+    const isUrgent = remarkStr.toLowerCase().includes('hỏa tốc') || remarkStr.toLowerCase().includes('khẩn');
+    const isHigh = remarkStr.toLowerCase().includes('gấp') || remarkStr.toLowerCase().includes('ưu tiên');
+    const qtyMatch = remarkStr.match(/x\s*(\d+)/i);
+    const parsedQty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+
+    return {
+      id: j.id,
+      code: j.job_no || j.id,
+      lift_id: j.lift_id || 'L1',
+      lift_number: dbLifts.find(l => l.id === j.lift_id || l.lift_code === j.lift_id)?.lift_name || j.lift_id || 'Thang P1',
+      created_by: j.sender_id || 'u1',
+      creator_name: (j.sender_id && userMap[j.sender_id]) ? userMap[j.sender_id] : 'Nhân viên kho',
+      source_floor: parseFloorWithMap(j.from_floor, floorMap),
+      target_floor: parseFloorWithMap(j.to_floor, floorMap),
+      status: (j.status as any) || 'CREATED',
+      priority: isUrgent ? 'URGENT' : isHigh ? 'HIGH' : 'NORMAL',
+      item_type: remarkStr.split(' x')[0] || 'Pallet Hàng',
+      quantity: parsedQty || 1,
+      notes: remarkStr,
+      created_at: j.created_at,
+      updated_at: j.completed_at || j.created_at,
+      completed_at: j.completed_at || (j.status === 'COMPLETED' ? j.created_at : undefined)
+    };
+  });
 
   const today = getLocalDateString();
   const mergedLifts: Lift[] = mappedLifts.map(dbLift => {
@@ -531,9 +540,13 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     const realId = targetJob?.id || jobId;
 
     // Save to DB
+    const isCompleted = updates.status === 'COMPLETED';
+    const completedAt = isCompleted ? new Date().toISOString() : undefined;
+
     await db.transportJobs.update(realId, {
       ...(updates.status ? { status: updates.status as any } : {}),
-      ...(updates.notes !== undefined ? { remark: updates.notes } : {})
+      ...(updates.notes !== undefined ? { remark: updates.notes } : {}),
+      ...(completedAt ? { completed_at: completedAt } : {})
     }).catch(console.error);
 
     if (updates.status && targetJob && updates.status !== targetJob.status) {
@@ -579,7 +592,14 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
     set((state) => ({
       jobs: state.jobs.map((job) =>
-        (job.id === jobId || job.code === jobId) ? { ...job, ...updates, updated_at: new Date().toISOString() } : job
+        (job.id === jobId || job.code === jobId)
+          ? {
+              ...job,
+              ...updates,
+              ...(completedAt ? { completed_at: completedAt } : {}),
+              updated_at: new Date().toISOString()
+            }
+          : job
       )
     }));
   },
