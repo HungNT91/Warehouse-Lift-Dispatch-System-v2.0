@@ -319,6 +319,80 @@ function processLiftsAndJobs(
   return { mergedLifts, mappedJobs: finalMergedJobs };
 }
 
+function processActivities(
+  dbActivities: any[],
+  dbUsers: any[],
+  dbJobs: any[],
+  dbLifts: any[],
+  userMap: Record<string, string>
+): ActivityLog[] {
+  return dbActivities.map(a => {
+    // Resolve user display name
+    let displayUserName = 'Hệ Thống';
+    if (a.user_id && a.user_id !== 'system') {
+      if (userMap[a.user_id]) {
+        displayUserName = userMap[a.user_id];
+      } else {
+        const foundUser = dbUsers.find(u => u.id === a.user_id || u.employee_code === a.user_id);
+        if (foundUser) displayUserName = foundUser.full_name;
+        else if (!a.user_id.includes('-') || a.user_id.length < 20) displayUserName = a.user_id;
+      }
+    }
+
+    // Resolve entity display ID
+    let displayEntityId = a.record_id || '';
+    if (displayEntityId && (displayEntityId.length > 20 || displayEntityId.includes('-'))) {
+      const matchingJob = dbJobs.find(j => j.id === displayEntityId || j.job_no === displayEntityId);
+      if (matchingJob) {
+        displayEntityId = matchingJob.job_no || matchingJob.id;
+      } else {
+        const matchingLift = dbLifts.find(l => l.id === displayEntityId);
+        if (matchingLift) {
+          displayEntityId = matchingLift.lift_name ? matchingLift.lift_name.replace('Lift ', 'Tời ') : 'Tời';
+        } else {
+          const matchingUser = dbUsers.find(u => u.id === displayEntityId);
+          if (matchingUser) {
+            displayEntityId = matchingUser.employee_code || matchingUser.full_name;
+          } else {
+            displayEntityId = '';
+          }
+        }
+      }
+    }
+
+    // Sanitize any raw UUID strings inside description
+    let cleanDescription = a.description || '';
+    const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi;
+    cleanDescription = cleanDescription.replace(uuidPattern, (uuidStr) => {
+      const matchedJob = dbJobs.find(j => j.id === uuidStr);
+      if (matchedJob) return matchedJob.job_no || 'đơn hàng';
+      const matchedLift = dbLifts.find(l => l.id === uuidStr);
+      if (matchedLift) return matchedLift.lift_name ? matchedLift.lift_name.replace('Lift ', 'Tời ') : 'Tời';
+      const matchedUser = dbUsers.find(u => u.id === uuidStr);
+      if (matchedUser) return matchedUser.full_name;
+      return 'đối tượng';
+    });
+
+    // Determine badge action category
+    const actLower = (a.action || '').toLowerCase();
+    let catAction = 'system';
+    if (actLower.includes('job') || actLower.includes('order')) catAction = 'job';
+    else if (actLower.includes('telegram')) catAction = 'telegram';
+    else if (actLower.includes('assign')) catAction = 'assignment';
+    else if (actLower.includes('alert') || actLower.includes('stop') || actLower.includes('warning')) catAction = 'alert';
+
+    return {
+      id: String(a.id),
+      user_id: displayUserName,
+      action: catAction,
+      entity: a.table_name,
+      entity_id: displayEntityId,
+      description: cleanDescription,
+      created_at: a.created_at ? new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong'
+    };
+  });
+}
+
 export const useLiftStore = create<LiftState>((set, get) => ({
   lifts: [],
   jobs: [],
@@ -818,19 +892,20 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     }));
   },
 
-  // Dynamic polling: chỉ fetch 2 bảng thường xuyên biến động (lifts, transport_jobs)
+  // Dynamic polling: fetch nhẹ các bảng biến động (lifts, transport_jobs, notifications, activityLogs) với LIMIT
   fetchDynamicData: async () => {
-    // Nếu chưa từng có cache dữ liệu tĩnh (floors, users, statuses), chạy fetchInitialData một lần
+    // Nếu chưa từng có cache dữ liệu tĩnh (floors, users, statuses), chạy fetchInitialData một lần duy nhất
     if (_cachedFloors.length === 0 || _cachedUsers.length === 0) {
       await get().fetchInitialData();
       return;
     }
 
     try {
-      const [dbLifts, dbJobs, dbNotifs] = await Promise.all([
+      const [dbLifts, dbJobs, dbNotifs, dbActivities] = await Promise.all([
         db.lifts.getAll(),
         db.transportJobs.getAll(),
-        db.notifications.getAll()
+        db.notifications.getAll(),
+        db.activityLogs.getAll()
       ]);
 
       const { mergedLifts, mappedJobs } = processLiftsAndJobs(
@@ -854,10 +929,19 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         link_id: n.job_id
       }));
 
+      const mappedActivities = processActivities(
+        dbActivities,
+        _cachedUsers,
+        dbJobs,
+        dbLifts,
+        _cachedUserMap
+      );
+
       set(state => ({
         lifts: mergedLifts.length > 0 ? mergedLifts : state.lifts,
         jobs: mappedJobs,
-        notifications: mappedNotifs.length > 0 ? mappedNotifs : state.notifications
+        notifications: mappedNotifs.length > 0 ? mappedNotifs : state.notifications,
+        activities: mappedActivities.length > 0 ? mappedActivities : state.activities
       }));
     } catch (e) {
       console.warn('[LiftStore] fetchDynamicData gặp lỗi (sẽ thử lại ở chu kỳ kế tiếp):', e);
@@ -921,71 +1005,13 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       }));
 
       // Map activities
-      const mappedActivities: ActivityLog[] = dbActivities.map(a => {
-        // Resolve user display name
-        let displayUserName = 'Hệ Thống';
-        if (a.user_id && a.user_id !== 'system') {
-          if (_cachedUserMap[a.user_id]) {
-            displayUserName = _cachedUserMap[a.user_id];
-          } else {
-            const foundUser = dbUsers.find(u => u.id === a.user_id || u.employee_code === a.user_id);
-            if (foundUser) displayUserName = foundUser.full_name;
-            else if (!a.user_id.includes('-') || a.user_id.length < 20) displayUserName = a.user_id;
-          }
-        }
-
-        // Resolve entity display ID
-        let displayEntityId = a.record_id || '';
-        if (displayEntityId && (displayEntityId.length > 20 || displayEntityId.includes('-'))) {
-          const matchingJob = dbJobs.find(j => j.id === displayEntityId || j.job_no === displayEntityId);
-          if (matchingJob) {
-            displayEntityId = matchingJob.job_no || matchingJob.id;
-          } else {
-            const matchingLift = dbLifts.find(l => l.id === displayEntityId);
-            if (matchingLift) {
-              displayEntityId = matchingLift.lift_name ? matchingLift.lift_name.replace('Lift ', 'Tời ') : 'Tời';
-            } else {
-              const matchingUser = dbUsers.find(u => u.id === displayEntityId);
-              if (matchingUser) {
-                displayEntityId = matchingUser.employee_code || matchingUser.full_name;
-              } else {
-                displayEntityId = '';
-              }
-            }
-          }
-        }
-
-        // Sanitize any raw UUID strings inside description
-        let cleanDescription = a.description || '';
-        const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi;
-        cleanDescription = cleanDescription.replace(uuidPattern, (uuidStr) => {
-          const matchedJob = dbJobs.find(j => j.id === uuidStr);
-          if (matchedJob) return matchedJob.job_no || 'đơn hàng';
-          const matchedLift = dbLifts.find(l => l.id === uuidStr);
-          if (matchedLift) return matchedLift.lift_name ? matchedLift.lift_name.replace('Lift ', 'Tời ') : 'Tời';
-          const matchedUser = dbUsers.find(u => u.id === uuidStr);
-          if (matchedUser) return matchedUser.full_name;
-          return 'đối tượng';
-        });
-
-        // Determine badge action category
-        const actLower = (a.action || '').toLowerCase();
-        let catAction = 'system';
-        if (actLower.includes('job') || actLower.includes('order')) catAction = 'job';
-        else if (actLower.includes('telegram')) catAction = 'telegram';
-        else if (actLower.includes('assign')) catAction = 'assignment';
-        else if (actLower.includes('alert') || actLower.includes('stop') || actLower.includes('warning')) catAction = 'alert';
-
-        return {
-          id: String(a.id),
-          user_id: displayUserName,
-          action: catAction,
-          entity: a.table_name,
-          entity_id: displayEntityId,
-          description: cleanDescription,
-          created_at: a.created_at ? new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong'
-        };
-      });
+      const mappedActivities = processActivities(
+        dbActivities,
+        dbUsers,
+        dbJobs,
+        dbLifts,
+        _cachedUserMap
+      );
 
       set({
         lifts: mergedLifts.length > 0 ? mergedLifts : mockLifts,

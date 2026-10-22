@@ -28,10 +28,13 @@ app.use((req, res, next) => {
     next();
 });
 
-// Run background polling every 5 seconds (fallback mode)
+// Run background polling every 15 seconds ONLY when Webhook is not active (fallback mode)
 setInterval(() => {
-    pollTelegramUpdates().catch(() => { });
-}, 5000);
+    const state = getSystemState();
+    if (!state.webhookUrl) {
+        pollTelegramUpdates().catch(() => { });
+    }
+}, 15000);
 
 // API Routes
 app.get("/api/system/status", (req, res) => {

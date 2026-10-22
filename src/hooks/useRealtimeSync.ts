@@ -1,11 +1,11 @@
 /**
  * useRealtimeSync.ts
  *
- * Cơ chế cập nhật dữ liệu tự động hai lớp:
- *  - Layer 1 (Primary):  Supabase Realtime WebSocket — cập nhật tức thì khi DB thay đổi
- *  - Layer 2 (Fallback): Polling 60 giây — kích hoạt khi WebSocket không khả dụng
+ * Cơ chế cập nhật dữ liệu tự động tối ưu hóa 2 lớp:
+ *  - Layer 1 (Primary): Supabase Realtime WebSocket — cập nhật tức thì với Debounce 600ms
+ *  - Layer 2 (Fallback): Heartbeat 60s khi Realtime đang chạy, hoặc Polling 25s khi WebSocket gặp lỗi/mất kết nối
  *
- * Trạng thái kết nối được lưu vào useLiftStore.syncStatus để UI có thể đọc từ bất kỳ đâu.
+ * Trạng thái kết nối được lưu vào useLiftStore.syncStatus để UI hiển thị chính xác.
  */
 
 import { useEffect, useRef } from 'react';
@@ -14,11 +14,14 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { isSupabaseConfigured } from '../api/dbClient';
 import { getSupabase } from '../api/supabase';
 
-const POLL_INTERVAL_MS = 5_000; // 5 giây
+const FALLBACK_POLL_INTERVAL_MS = 25_000; // 25s khi mất kết nối Realtime
+const REALTIME_HEARTBEAT_MS = 60_000;      // 60s heartbeat đồng bộ định kỳ khi Realtime bình thường
 
 /** Module-level singletons — tránh đăng ký trùng khi component re-render */
 let _channels: any[] = [];
 let _pollingTimer: ReturnType<typeof setInterval> | null = null;
+let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let _currentPollInterval = FALLBACK_POLL_INTERVAL_MS;
 let _initialized = false;
 
 export function useRealtimeSync() {
@@ -27,7 +30,7 @@ export function useRealtimeSync() {
   const refreshingRef = useRef(false);
 
   const refresh = async (onlyDynamic = false) => {
-    if (refreshingRef.current) return; // chặn gọi song song
+    if (refreshingRef.current) return; // Chặn gọi song song chồng chéo
     refreshingRef.current = true;
     try {
       if (onlyDynamic) {
@@ -47,31 +50,44 @@ export function useRealtimeSync() {
     }
   };
 
+  // Gom nhiều event dồn dập (ví dụ khi tạo đơn có 3 table cùng insert) thành 1 lần refresh duy nhất
+  const scheduleDebouncedRefresh = () => {
+    if (_debounceTimer) clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(() => {
+      _debounceTimer = null;
+      refresh(true);
+    }, 600);
+  };
+
   useEffect(() => {
     if (!isAuthenticated || _initialized) return;
     _initialized = true;
 
     if (!isSupabaseConfigured()) {
-      console.info('[RealtimeSync] Supabase chưa cấu hình → chỉ Polling 5s.');
+      console.info('[RealtimeSync] Supabase chưa cấu hình → Polling dự phòng 25s.');
       setSyncStatus('polling');
-      _startPolling();
+      _startPolling(FALLBACK_POLL_INTERVAL_MS);
       return;
     }
 
     setSyncStatus('connecting');
     _startRealtimeSubscriptions();
-    _startPolling(); // luôn giữ polling làm dự phòng
+    _startPolling(FALLBACK_POLL_INTERVAL_MS);
 
     return () => {
       _stopRealtimeSubscriptions();
       _stopPolling();
+      if (_debounceTimer) {
+        clearTimeout(_debounceTimer);
+        _debounceTimer = null;
+      }
       _initialized = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   // ─────────────────────────────────────────────
-  // LAYER 1: Supabase Realtime WebSocket
+  // LAYER 1: Supabase Realtime WebSocket (Debounced)
   // ─────────────────────────────────────────────
   function _startRealtimeSubscriptions() {
     if (_channels.length > 0) return;
@@ -94,8 +110,8 @@ export function useRealtimeSync() {
             'postgres_changes' as any,
             { event, schema: 'public', table: name },
             () => {
-              const onlyDynamic = (name === 'lifts' || name === 'transport_jobs');
-              refresh(onlyDynamic);
+              // Mọi event đều qua debounced refresh và chỉ fetch dynamic data, không bao giờ fetch lại 7 bảng
+              scheduleDebouncedRefresh();
             }
           )
           .subscribe((status: string) => {
@@ -103,11 +119,14 @@ export function useRealtimeSync() {
               subscribedCount++;
               if (subscribedCount >= tables.length) {
                 setSyncStatus('realtime', new Date());
-                console.info('[RealtimeSync] ✅ Tất cả Realtime channel đã kết nối.');
+                console.info('[RealtimeSync] ✅ Realtime WebSocket kết nối thành công. Chuyển Polling sang chế độ Heartbeat 60s.');
+                // Giảm tần suất polling xuống 60s để tiết kiệm API tối đa khi Realtime hoạt động tốt
+                _startPolling(REALTIME_HEARTBEAT_MS);
               }
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              console.warn(`[RealtimeSync] ⚠️ Channel ${name} lỗi → Polling bù lại.`);
+              console.warn(`[RealtimeSync] ⚠️ Channel ${name} gặp sự cố → Chuyển sang Polling dự phòng 25s.`);
               setSyncStatus('polling');
+              _startPolling(FALLBACK_POLL_INTERVAL_MS);
             }
           });
 
@@ -116,6 +135,7 @@ export function useRealtimeSync() {
     } catch (err) {
       console.error('[RealtimeSync] Không thể khởi tạo Realtime:', err);
       setSyncStatus('polling');
+      _startPolling(FALLBACK_POLL_INTERVAL_MS);
     }
   }
 
@@ -129,12 +149,14 @@ export function useRealtimeSync() {
   }
 
   // ─────────────────────────────────────────────
-  // LAYER 2: Polling Fallback (5 giây - Tối ưu Lifts & Jobs)
+  // LAYER 2: Heartbeat & Fallback Polling
   // ─────────────────────────────────────────────
-  function _startPolling() {
-    if (_pollingTimer) return;
-    _pollingTimer = setInterval(() => { refresh(true); }, POLL_INTERVAL_MS);
-    console.info(`[RealtimeSync] 🔄 Polling tối ưu khởi động — mỗi ${POLL_INTERVAL_MS / 1000}s (chỉ quét Lifts & Jobs).`);
+  function _startPolling(intervalMs: number) {
+    if (_pollingTimer && _currentPollInterval === intervalMs) return;
+    _stopPolling();
+    _currentPollInterval = intervalMs;
+    _pollingTimer = setInterval(() => { refresh(true); }, intervalMs);
+    console.info(`[RealtimeSync] 🔄 Polling thiết lập chu kỳ: ${intervalMs / 1000}s.`);
   }
 
   function _stopPolling() {
@@ -144,3 +166,4 @@ export function useRealtimeSync() {
     }
   }
 }
+

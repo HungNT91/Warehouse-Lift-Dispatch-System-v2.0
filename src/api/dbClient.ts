@@ -57,6 +57,7 @@ export const isUuid = (str: any): boolean => {
 let cachedFloors: DbFloor[] = [];
 let cachedLifts: DbLift[] = [];
 let cachedUsers: DbUser[] = [];
+let _lastRestrictionSyncTime = 0;
 
 // Helper functions to resolve floor, lift, user to valid UUIDs for Supabase foreign keys
 export const resolveFloorUuid = (floorVal: any): string => {
@@ -419,18 +420,22 @@ export const db = {
 
       if (!isSupabaseConfigured()) return enrichWithFloorRestrictions(mockDbData.lifts);
       try {
-        // Đồng bộ cấu hình giới hạn tầng từ bảng system_settings nếu có
-        try {
-          const { data: settingData } = await getSupabase()
-            .from('system_settings')
-            .select('*')
-            .eq('setting_key', 'LIFT_FLOOR_RESTRICTIONS')
-            .maybeSingle();
-          if (settingData?.setting_value) {
-            const parsed = JSON.parse(settingData.setting_value);
-            mergeRemoteFloorRestrictions(parsed);
-          }
-        } catch { }
+        // Đồng bộ cấu hình giới hạn tầng từ bảng system_settings nếu có (cache 60s để tránh lặp lại query liên tục)
+        const now = Date.now();
+        if (now - _lastRestrictionSyncTime > 60_000) {
+          _lastRestrictionSyncTime = now;
+          try {
+            const { data: settingData } = await getSupabase()
+              .from('system_settings')
+              .select('*')
+              .eq('setting_key', 'LIFT_FLOOR_RESTRICTIONS')
+              .maybeSingle();
+            if (settingData?.setting_value) {
+              const parsed = JSON.parse(settingData.setting_value);
+              mergeRemoteFloorRestrictions(parsed);
+            }
+          } catch { }
+        }
 
         const { data, error } = await getSupabase().from('lifts').select('*');
         if (!error && data && data.length > 0) {
@@ -691,7 +696,11 @@ export const db = {
       let supabaseJobs: DbTransportJob[] = [];
       if (isSupabaseConfigured()) {
         try {
-          const { data, error } = await getSupabase().from('transport_jobs').select('*').order('created_at', { ascending: false });
+          const { data, error } = await getSupabase()
+            .from('transport_jobs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(150);
           if (!error && data && data.length > 0) {
             supabaseJobs = data;
           } else if (error) {
@@ -1084,7 +1093,11 @@ export const db = {
     async getAll(): Promise<DbActivityLog[]> {
       if (isSupabaseConfigured()) {
         try {
-          const { data, error } = await getSupabase().from('activity_logs').select('*').order('created_at', { ascending: false });
+          const { data, error } = await getSupabase()
+            .from('activity_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(60);
           if (!error && data) {
             return data;
           } else if (error) {
@@ -1229,7 +1242,11 @@ export const db = {
   notifications: {
     async getAll(): Promise<DbNotification[]> {
       if (!isSupabaseConfigured()) return mockDbData.notifications;
-      const { data, error } = await getSupabase().from('notifications').select('*').order('created_at', { ascending: false });
+      const { data, error } = await getSupabase()
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
       if (error) return [];
       return data || [];
     },

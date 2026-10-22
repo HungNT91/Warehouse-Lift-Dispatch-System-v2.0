@@ -73,7 +73,7 @@ export function TelegramCenter() {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
+    const interval = setInterval(fetchStatus, 20000);
     return () => clearInterval(interval);
   }, []);
 
