@@ -107,7 +107,7 @@ export function broadcastLiftArrival(
       title: notifTitle,
       message: formattedMessage,
       severity: 'info' as const,
-      category: 'telegram' as const,
+      category: 'system' as const,
       is_read: false,
       created_at: new Date().toISOString(),
       link_id: liftId

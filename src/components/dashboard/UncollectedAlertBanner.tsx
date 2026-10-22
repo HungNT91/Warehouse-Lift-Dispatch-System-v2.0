@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLiftStore } from '../../stores/useLiftStore';
 import { safeParseTimestamp } from '../../utils/time';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { useTelegramStore } from '../../stores/useTelegramStore';
 import { speakUncollectedWarning } from '../../utils/audio';
 import { AlertTriangle, PackageCheck, Clock, Lock, ArrowRight, ShieldAlert } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -58,22 +57,6 @@ export const UncollectedAlertBanner: React.FC = () => {
 
             if (shouldPlaySound) {
               speakUncollectedWarning(lift.lift_number, lift.current_floor, minutes);
-            }
-
-            // 2. Dispatch Telegram Automatic Trigger Message
-            const { autoSendUncollectedCargo, sendTelegramMessage, floorConfigs, defaultChatId } = useTelegramStore.getState();
-            if (autoSendUncollectedCargo) {
-              const currentFloor = lift.current_floor;
-              const liftName = lift.lift_number;
-              const cfg = floorConfigs[currentFloor];
-              const chatId = (cfg && cfg.enabled && cfg.chatId) ? cfg.chatId : defaultChatId;
-              const groupLabel = (cfg && cfg.enabled && cfg.groupName) ? cfg.groupName : `KHO TẦNG ${currentFloor}`;
-
-              sendTelegramMessage({
-                chatId,
-                targetGroupLabel: groupLabel,
-                message: `🚨 <b>CẢNH BÁO TỒN ĐỌNG HÀNG (LẦN ${intervalNumber} - QUÁ ${minutes} PHÚT)</b>\n📍 <b>Vị trí:</b> ${liftName} - Tầng ${currentFloor}\n⏱️ <b>Thời gian chờ:</b> ${Math.floor(elapsedSecs / 60)} phút ${elapsedSecs % 60} giây chưa dỡ hàng\n👉 <i>Yêu cầu Đội Kho ${groupLabel} khẩn trương kéo/dỡ hàng khỏi thang!</i>`
-              }).catch(console.error);
             }
           }
         }

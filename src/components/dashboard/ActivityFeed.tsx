@@ -15,7 +15,6 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
       case 'job': return "bg-green-500";
       case 'system': return "bg-blue-500";
       case 'alert': return "bg-red-500";
-      case 'telegram': return "bg-orange-500";
       default: return "bg-slate-300";
     }
   };

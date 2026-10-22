@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   History, Search, Filter, Download, Calendar, ArrowUpDown, 
-  Package, MessageCircle, AlertTriangle, ShieldCheck, CheckCircle2,
+  Package, AlertTriangle, ShieldCheck, CheckCircle2,
   Clock, FileText, ChevronRight, RefreshCw, UserCheck
 } from 'lucide-react';
 import { useLiftStore } from '../stores/useLiftStore';
@@ -71,13 +71,6 @@ export const HistoryPage: React.FC = () => {
           <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
             <ArrowUpDown className="w-3 h-3" />
             Thang Tời
-          </span>
-        );
-      case 'telegram':
-        return (
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex items-center gap-1">
-            <MessageCircle className="w-3 h-3" />
-            Telegram
           </span>
         );
       case 'alert':
@@ -208,7 +201,6 @@ export const HistoryPage: React.FC = () => {
             { key: 'ALL', label: 'Tất cả sự kiện' },
             { key: 'job', label: 'Đơn hàng' },
             { key: 'system', label: 'Thang tời' },
-            { key: 'telegram', label: 'Telegram' },
             { key: 'alert', label: 'Cảnh báo' },
             { key: 'assignment', label: 'Phân công ca' },
           ].map((cat) => (

@@ -24,11 +24,6 @@ export function AppLayout() {
         <div className="h-12 bg-slate-900 text-white px-4 sm:px-6 flex items-center justify-between shrink-0 overflow-x-auto gap-4">
           <div className="flex items-center gap-4 sm:gap-6 whitespace-nowrap">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:inline">Trạng thái Telegram:</span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest sm:hidden">Tele:</span>
-              <span className="text-[10px] font-bold text-green-400">ĐÃ KẾT NỐI (BOT-01)</span>
-            </div>
-            <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:inline">Giọng nói:</span>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest sm:hidden">Mic:</span>
               <span className="text-[10px] font-bold text-blue-400 uppercase">Sẵn sàng</span>

@@ -196,7 +196,6 @@ export const NotificationsPage: React.FC = () => {
           { key: 'uncollected', label: 'Tồn đọng hàng' },
           { key: 'lift', label: 'Tời vận hành' },
           { key: 'job', label: 'Đơn hàng' },
-          { key: 'telegram', label: 'Telegram' },
           { key: 'system', label: 'Hệ thống' },
         ].map((tab) => (
           <button

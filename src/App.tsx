@@ -6,7 +6,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./layouts/AppLayout";
 import { Dashboard } from "./pages/Dashboard";
-import { TelegramCenter } from "./pages/TelegramCenter";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
 import { Users } from "./pages/Users";
@@ -19,13 +18,11 @@ import { ProtectedRoute, PublicRoute } from "./routes/ProtectedRoutes";
 import { useEffect } from "react";
 import { useLiftStore } from "./stores/useLiftStore";
 import { useAuthStore } from "./stores/useAuthStore";
-import { useTelegramStore } from "./stores/useTelegramStore";
 import { useRealtimeSync } from "./hooks/useRealtimeSync";
 
 export default function App() {
   const { fetchInitialData } = useLiftStore();
   const { isAuthenticated } = useAuthStore();
-  const { loadSettingsFromDb, loadLogsFromDb } = useTelegramStore();
 
   // Khởi động đồng bộ dữ liệu tự động (Realtime + Polling)
   useRealtimeSync();
@@ -33,10 +30,8 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchInitialData();
-      loadSettingsFromDb().catch(console.error);
-      loadLogsFromDb().catch(console.error);
     }
-  }, [isAuthenticated, fetchInitialData, loadSettingsFromDb, loadLogsFromDb]);
+  }, [isAuthenticated, fetchInitialData]);
 
   return (
     <BrowserRouter>
@@ -55,7 +50,6 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<AppLayout />}>
               <Route index element={<Dashboard />} />
-              <Route path="telegram" element={<TelegramCenter />} />
               <Route path="reports" element={<Reports />} />
 
               {/* Placeholders for other routes */}

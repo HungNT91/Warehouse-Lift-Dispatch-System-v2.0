@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Lift } from '../../types';
 import { useLiftStore } from '../../stores/useLiftStore';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { useTelegramStore } from '../../stores/useTelegramStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle, AlertOctagon, AlertCircle, X, ShieldAlert, Clock, User, Layers, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -40,32 +39,14 @@ export const LiftIssueReportModal: React.FC<LiftIssueReportModalProps> = ({ lift
         try {
             const issueLabel = issueType === 'SỰ CỐ DỪNG ĐỘT NGỘT' ? '⛔ DỪNG ĐỘT NGỘT' : '🔌 KHÔNG HOẠT ĐỘNG / MẤT KẾT NỐI';
 
-            // 1. Send Telegram Alert to Tech Maintenance Team
-            const { techChatId, defaultChatId, sendTelegramMessage } = useTelegramStore.getState();
-            const targetChat = techChatId || defaultChatId;
-
-            const telegramMsg = `🚨 <b>CẢNH BÁO BẢO TRÌ & SỰ CỐ THIẾT BỊ</b>\n` +
-                `⚙️ <b>Thiết bị sự cố:</b> ${liftName} (${lift.lift_code || 'Mã #' + lift.id})\n` +
-                `📍 <b>Vị trí hiện tại:</b> Tầng ${lift.current_floor}\n` +
-                `⚠️ <b>Loại sự cố:</b> ${issueLabel}\n` +
-                `⏰ <b>Thời gian báo:</b> ${nowStr}\n` +
-                `👤 <b>Nhân viên báo:</b> ${fullReporterStr}\n` +
-                `🆘 <i>Đề nghị Đội Bảo Trì Kỹ Thuật tiếp nhận & xử lý khẩn cấp!</i>`;
-
-            await sendTelegramMessage({
-                chatId: targetChat,
-                targetGroupLabel: 'Đội Kỹ Thuật & Bảo Trì',
-                message: telegramMsg
-            }).catch((err) => console.error('Telegram alert error:', err));
-
-            // 2. Update lift status in store
+            // 1. Update lift status in store
             const newStatus = issueType === 'SỰ CỐ DỪNG ĐỘT NGỘT' ? 'STOPPED' : 'MAINTENANCE';
             updateLift(lift.id, {
                 status: newStatus,
                 operator: reporterName
             });
 
-            // 3. Log System Activity
+            // 2. Log System Activity
             addActivity({
                 user_id: user?.id || 'u1',
                 action: 'SỰ CỐ THANG',
@@ -74,7 +55,7 @@ export const LiftIssueReportModal: React.FC<LiftIssueReportModalProps> = ({ lift
                 description: `Báo cảnh báo: [${issueType}] tại Tầng ${lift.current_floor} bởi ${fullReporterStr}`
             });
 
-            toast.success(`🚨 Đã gửi cảnh báo "${issueType}" tới Đội Bảo Trì Kỹ Thuật!`, {
+            toast.success(`🚨 Đã báo cáo sự cố "${issueType}" thành công!`, {
                 description: `Thang ${liftName} đã chuyển sang trạng thái ${newStatus === 'STOPPED' ? 'ĐÃ DỪNG' : 'BẢO TRÌ'}.`
             });
 

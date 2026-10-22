@@ -84,7 +84,7 @@ export type AppNotification = {
   title: string;
   message: string;
   severity: NotificationSeverity;
-  category: 'lift' | 'job' | 'system' | 'telegram' | 'uncollected';
+  category: 'lift' | 'job' | 'system' | 'uncollected';
   is_read: boolean;
   created_at: string;
   link_id?: string;

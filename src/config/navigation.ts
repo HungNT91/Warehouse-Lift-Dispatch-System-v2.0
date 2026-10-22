@@ -4,7 +4,6 @@ import {
   Package, 
   History, 
   Bell, 
-  MessageCircle, 
   BarChart3, 
   Users, 
   Settings,
@@ -25,11 +24,11 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { label: "Giám Sát Tời", href: "/lifts", icon: ArrowUpDown, roles: ['Supervisor', 'Admin'] },
   { label: "Lịch Sử", href: "/history", icon: History },
   { label: "Thông Báo", href: "/notifications", icon: Bell },
-  { label: "Trung Tâm Telegram", href: "/telegram", icon: MessageCircle, roles: ['Supervisor', 'Admin'] },
   { label: "Báo Cáo", href: "/reports", icon: BarChart3, roles: ['Supervisor', 'Admin'] },
   { label: "Người Dùng", href: "/users", icon: Users, roles: ['Supervisor', 'Admin'] },
   { label: "Cài Đặt", href: "/settings", icon: Settings },
 ];
+
 
 export function getNavItemsForRole(role?: Role): NavItem[] {
   if (!role) {

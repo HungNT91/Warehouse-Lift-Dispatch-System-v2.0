@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { Lift, Job, AppNotification, ActivityLog } from '../types';
 import { db, isUuid } from '../api/dbClient';
 import { mockLifts, mockJobs, mockNotifications, mockActivities } from '../data/mock';
-import { useTelegramStore } from './useTelegramStore';
 import { useAuthStore } from './useAuthStore';
 import { speakLiftArrival } from '../utils/audio';
 import { isSameLift, safeParseTimestamp, getLocalDateString, getEffectiveAllowedFloors } from '../utils/time';
@@ -377,7 +376,6 @@ function processActivities(
     const actLower = (a.action || '').toLowerCase();
     let catAction = 'system';
     if (actLower.includes('job') || actLower.includes('order')) catAction = 'job';
-    else if (actLower.includes('telegram')) catAction = 'telegram';
     else if (actLower.includes('assign')) catAction = 'assignment';
     else if (actLower.includes('alert') || actLower.includes('stop') || actLower.includes('warning')) catAction = 'alert';
 
@@ -507,62 +505,11 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       }).catch(console.error);
     }
 
-    // ----------------------------------------------------
-    // AUTOMATIC TELEGRAM TRIGGERS CHECK
-    // ----------------------------------------------------
-    const liftName = prevLift?.lift_number || liftId;
-
-    // Trigger 1: autoSendLiftMaintenance
-    if (updates.status && updates.status !== prevLift?.status && ['MAINTENANCE', 'LOCKED', 'OFFLINE'].includes(updates.status)) {
-      const { autoSendLiftMaintenance, sendTelegramMessage, techChatId } = useTelegramStore.getState();
-      if (autoSendLiftMaintenance) {
-        const statusText = updates.status === 'MAINTENANCE' ? 'Đang Bảo Trì Định Kỳ' : updates.status === 'LOCKED' ? 'Tạm Thời Khóa Tải' : 'Ngoại Tuyến';
-        sendTelegramMessage({
-          chatId: techChatId,
-          targetGroupLabel: 'Đội Kỹ Thuật & Bảo Trì',
-          message: `⚠️ <b>CẢNH BÁO BẢO TRÌ THIẾT BỊ</b>\n🛠️ <b>Thiết bị:</b> ${liftName}\n🔒 <b>Trạng thái mới:</b> ${statusText}\n⏱️ <i>Yêu cầu Đội Kỹ Thuật kiểm tra thiết bị!</i>`
-        }).catch(console.error);
-      }
-    }
-
-    // Trigger 2: autoSendLiftArrival & Hệ Thống Phát Thanh
+    // Phát thanh thông báo đến tầng qua toàn bộ hệ thống (BroadcastChannel, DB Notification, Local TTS)
     if (updates.status && prevLift?.status === 'MOVING' && ['WAITING_PICKUP', 'AVAILABLE'].includes(updates.status)) {
       const destFloor = updates.current_floor || prevLift?.destination_floor || prevLift?.current_floor || 1;
       const liftName = prevLift?.lift_number || liftId;
-
-      // Phát thanh thông báo đến tầng qua toàn bộ hệ thống (BroadcastChannel, DB Notification, Local TTS)
       broadcastLiftArrival(liftId, liftName, destFloor, updates.status === 'WAITING_PICKUP');
-
-      const { autoSendLiftArrival, sendTelegramMessage, floorConfigs, defaultChatId } = useTelegramStore.getState();
-      if (autoSendLiftArrival) {
-        const destFloor = updates.current_floor || prevLift?.destination_floor || prevLift?.current_floor || 1;
-        const cfg = floorConfigs[destFloor];
-        const chatId = (cfg && cfg.enabled && cfg.chatId) ? cfg.chatId : defaultChatId;
-        const groupLabel = (cfg && cfg.enabled && cfg.groupName) ? cfg.groupName : `KHO TẦNG ${destFloor}`;
-
-        sendTelegramMessage({
-          chatId,
-          targetGroupLabel: groupLabel,
-          message: `🔔 <b>HÀNG ĐÃ ĐƯỢC VẬN CHUYỂN ĐẾN TẦNG ${destFloor}</b>\n🚚 <b>${liftName}</b> đã vận chuyển thành công tới <b>Tầng ${destFloor}</b>\n✅ <i>Trạng thái: Sẵn sàng kéo hàng tại Tầng ${destFloor}.</i>`
-        }).catch(console.error);
-      }
-    }
-
-    // Trigger 3: autoSendUncollectedCargo
-    if (updates.status === 'WAITING_PICKUP' && prevLift?.status !== 'WAITING_PICKUP') {
-      const { autoSendUncollectedCargo, sendTelegramMessage, floorConfigs, defaultChatId } = useTelegramStore.getState();
-      if (autoSendUncollectedCargo) {
-        const destFloor = updates.current_floor || prevLift?.current_floor || 1;
-        const cfg = floorConfigs[destFloor];
-        const chatId = (cfg && cfg.enabled && cfg.chatId) ? cfg.chatId : defaultChatId;
-        const groupLabel = (cfg && cfg.enabled && cfg.groupName) ? cfg.groupName : `KHO TẦNG ${destFloor}`;
-
-        sendTelegramMessage({
-          chatId,
-          targetGroupLabel: groupLabel,
-          message: `🚨 <b>CẢNH BÁO TỒN ĐỌNG HÀNG</b>\n📍 <b>Vị trí:</b> ${liftName} - Tầng ${destFloor}\n⏱️ <b>Trạng thái:</b> Chờ kéo hàng tại tầng\n👉 <i>Yêu cầu Đội phụ Kho ${groupLabel} khẩn trương kéo hàng!</i>`
-        }).catch(console.error);
-      }
     }
 
     set((state) => ({
@@ -791,16 +738,6 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       link_id: newCode
     };
 
-    // Trigger 4: autoSendUrgentJob
-    const { autoSendUrgentJob, sendTelegramMessage, defaultChatId } = useTelegramStore.getState();
-    if (autoSendUrgentJob && (newJob.priority === 'URGENT' || newJob.notes?.toLowerCase().includes('hỏa tốc') || newJob.notes?.toLowerCase().includes('ưu tiên'))) {
-      sendTelegramMessage({
-        chatId: defaultChatId,
-        targetGroupLabel: 'Kênh Chung Kho',
-        message: `🔴 <b>ĐƠN VẬN CHUYỂN HỎA TỐC MỚI</b>\n📄 <b>Mã đơn:</b> #${newJob.code}\n🔄 <b>Lộ trình:</b> Tầng ${newJob.source_floor} ➔ Tầng ${newJob.target_floor}\n📦 <b>Loại hàng:</b> ${newJob.item_type} (Số lượng: ${newJob.quantity})\n👤 <b>Người tạo:</b> ${newJob.creator_name}\n⚡ <i>Yêu cầu ưu tiên tời vận hành ngay lập tức!</i>`
-      }).catch(console.error);
-    }
-
     set((state) => ({
       jobs: [newJob, ...state.jobs],
       activities: [newActivity, ...state.activities],
@@ -923,7 +860,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         title: n.title,
         message: n.message,
         severity: (n.notification_type && (n.notification_type.includes('WARNING') || n.notification_type.includes('URGENT'))) ? 'warning' : 'info',
-        category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'telegram' : 'job',
+        category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'system' : 'job',
         is_read: n.status === 'READ',
         created_at: n.created_at,
         link_id: n.job_id
@@ -998,7 +935,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         title: n.title,
         message: n.message,
         severity: (n.notification_type && (n.notification_type.includes('WARNING') || n.notification_type.includes('URGENT'))) ? 'warning' : 'info',
-        category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'telegram' : 'job',
+        category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'system' : 'job',
         is_read: n.status === 'READ',
         created_at: n.created_at,
         link_id: n.job_id

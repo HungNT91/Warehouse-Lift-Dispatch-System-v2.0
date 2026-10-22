@@ -383,15 +383,6 @@ export const mockNotifications: AppNotification[] = [
     link_id: 'TR-8994'
   },
   {
-    id: 'n4',
-    title: 'Đồng Bộ Telegram',
-    message: 'Đã phát tin nhắn cảnh báo tồn hàng tới Nhóm Telegram KHO TẦNG 4.',
-    severity: 'success',
-    category: 'telegram',
-    is_read: true,
-    created_at: new Date(Date.now() - 22 * 60000).toISOString(),
-  },
-  {
     id: 'n5',
     title: 'Bảo Trì Thiết Bị',
     message: 'Tời 05 đã chuyển sang chế độ Bảo trì định kỳ.',
@@ -406,7 +397,7 @@ export const mockNotifications: AppNotification[] = [
 export const mockActivities: ActivityLog[] = [
   { id: '1', created_at: '10:42 AM', description: 'Hùng đã tạo việc #TR-8994 (T1 ➔ T4 - Ưu tiên cao)', action: 'job', user_id: 'u1', entity: 'job', entity_id: 'TR-8994' },
   { id: '2', created_at: '10:41 AM', description: 'Tời 03 đã cập bến Tầng 4 (Cần dỡ hàng)', action: 'system', user_id: 'system', entity: 'lift', entity_id: 'L3' },
-  { id: '3', created_at: '10:39 AM', description: 'Gửi cảnh báo Telegram tự động đến nhóm KHO TẦNG 4', action: 'telegram', user_id: 'system', entity: 'notification', entity_id: 'T1' },
+  { id: '3', created_at: '10:39 AM', description: 'Hệ thống phát thông báo cảnh báo tồn hàng tới Nhóm KHO TẦNG 4', action: 'system', user_id: 'system', entity: 'notification', entity_id: 'T1' },
   { id: '4', created_at: '10:35 AM', description: 'Đặng Anh Lực xác nhận hoàn thành lấy hàng việc #TR-8989', action: 'job', user_id: 'u2', entity: 'job', entity_id: 'TR-8989' },
   { id: '5', created_at: '10:30 AM', description: 'Phát âm thanh thông báo giọng nói & chuông tời ở Tầng 1', action: 'alert', user_id: 'system', entity: 'notification', entity_id: 'T2' },
   { id: '6', created_at: '10:28 AM', description: 'Kỹ thuật viên khóa Tời 05 để bảo dưỡng định kỳ', action: 'system', user_id: 'system', entity: 'lift', entity_id: 'L5' },
