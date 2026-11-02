@@ -15,23 +15,13 @@ import { NotificationsPage } from "./pages/Notifications";
 import { Login } from "./pages/Login";
 import { AssignmentPage } from "./pages/Assignment";
 import { ProtectedRoute, PublicRoute } from "./routes/ProtectedRoutes";
-import { useEffect } from "react";
-import { useLiftStore } from "./stores/useLiftStore";
-import { useAuthStore } from "./stores/useAuthStore";
 import { useRealtimeSync } from "./hooks/useRealtimeSync";
 
 export default function App() {
-  const { fetchInitialData } = useLiftStore();
-  const { isAuthenticated } = useAuthStore();
 
   // Khởi động đồng bộ dữ liệu tự động (Realtime + Polling)
+  // useRealtimeSync tự xử lý fetchInitialData khi user đăng nhập — không gọi trùng ở đây
   useRealtimeSync();
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchInitialData();
-    }
-  }, [isAuthenticated, fetchInitialData]);
 
   return (
     <BrowserRouter>

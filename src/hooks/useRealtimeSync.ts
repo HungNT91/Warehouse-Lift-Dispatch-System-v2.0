@@ -22,9 +22,11 @@ const REALTIME_HEARTBEAT_MS = 60_000;      // 60s heartbeat đồng bộ định
 /** Module-level singletons — tránh đăng ký trùng khi component re-render */
 let _channels: any[] = [];
 let _pollingTimer: ReturnType<typeof setInterval> | null = null;
+let _delayTimer: ReturnType<typeof setTimeout> | null = null;
 let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let _currentPollInterval = FALLBACK_POLL_INTERVAL_MS;
 let _initialized = false;
+let _pendingWithLogs = false; // Tích lũy: bất kỳ event nào yêu cầu logs → fetch logs trong batch tiếp theo
 
 export function useRealtimeSync() {
   const { fetchInitialData, fetchDynamicData, setSyncStatus, checkAndResetExpiredRestrictions } = useLiftStore();
@@ -53,15 +55,20 @@ export function useRealtimeSync() {
   };
 
   // Gom nhiều event dồn dập (ví dụ khi tạo đơn có 3 table cùng insert) thành 1 lần refresh duy nhất
-  const scheduleDebouncedRefresh = () => {
+  // withLogs=true khi event INSERT vào notifications/activity_logs — cần fetch thêm 2 bảng đó
+  const scheduleDebouncedRefresh = (withLogs = false) => {
+    if (withLogs) _pendingWithLogs = true; // Tích lũy: nếu bất kỳ event nào yêu cầu logs → fetch logs
     if (_debounceTimer) clearTimeout(_debounceTimer);
     _debounceTimer = setTimeout(() => {
       _debounceTimer = null;
+      const needLogs = _pendingWithLogs;
+      _pendingWithLogs = false;
       // Nếu thao tác do chính thiết bị này vừa thực hiện -> state local đã cập nhật tức thì, không cần fetch lại
       if (isLocalActionActive()) {
         return;
       }
-      refresh(true);
+      // Truyền includeLogs để chỉ fetch notifications/activities khi thực sự có event mới
+      fetchDynamicData(needLogs);
     }, 800);
   };
 
@@ -69,20 +76,32 @@ export function useRealtimeSync() {
     if (!isAuthenticated || _initialized) return;
     _initialized = true;
 
+    // Fetch toàn bộ dữ liệu lần đầu khi user đăng nhập (thay thế useEffect trùng ở App.tsx)
+    refresh(false);
+
     if (!isSupabaseConfigured()) {
       console.info('[RealtimeSync] Supabase chưa cấu hình → Polling dự phòng 25s.');
       setSyncStatus('polling');
-      _startPolling(FALLBACK_POLL_INTERVAL_MS);
+      // Polling bắt đầu sau 25s vì vừa fetch xong ở trên
+      _delayTimer = setTimeout(() => {
+        _delayTimer = null;
+        _startPolling(FALLBACK_POLL_INTERVAL_MS);
+      }, FALLBACK_POLL_INTERVAL_MS);
       return;
     }
 
     setSyncStatus('connecting');
+    // Bắt đầu đăng ký Realtime — polling sẽ khởi động ở callback SUBSCRIBED hoặc khi gặp lỗi
+    // Không startPolling ngay lập tức ở đây để tránh fetch 2 lần cùng lúc khi khởi động
     _startRealtimeSubscriptions();
-    _startPolling(FALLBACK_POLL_INTERVAL_MS);
 
     return () => {
       _stopRealtimeSubscriptions();
       _stopPolling();
+      if (_delayTimer) {
+        clearTimeout(_delayTimer);
+        _delayTimer = null;
+      }
       if (_debounceTimer) {
         clearTimeout(_debounceTimer);
         _debounceTimer = null;
@@ -100,16 +119,16 @@ export function useRealtimeSync() {
     try {
       const supabase = getSupabase();
 
-      const tables = [
-        { name: 'lifts', event: '*' },
-        { name: 'transport_jobs', event: '*' },
-        { name: 'notifications', event: 'INSERT' },
-        { name: 'activity_logs', event: 'INSERT' },
-      ] as const;
+      const tables: { name: string; event: string; withLogs: boolean }[] = [
+        { name: 'lifts', event: '*', withLogs: false },
+        { name: 'transport_jobs', event: '*', withLogs: false },
+        { name: 'notifications', event: 'INSERT', withLogs: true },
+        { name: 'activity_logs', event: 'INSERT', withLogs: true },
+      ];
 
       let subscribedCount = 0;
 
-      tables.forEach(({ name, event }) => {
+      tables.forEach(({ name, event, withLogs }) => {
         const ch = supabase
           .channel(`realtime_wlds:${name}`)
           .on(
@@ -117,7 +136,7 @@ export function useRealtimeSync() {
             { event, schema: 'public', table: name },
             () => {
               // Mọi event đều qua debounced refresh và chỉ fetch dynamic data khi không phải self-action
-              scheduleDebouncedRefresh();
+              scheduleDebouncedRefresh(withLogs);
             }
           )
           .subscribe((status: string) => {
@@ -161,7 +180,7 @@ export function useRealtimeSync() {
     if (_pollingTimer && _currentPollInterval === intervalMs) return;
     _stopPolling();
     _currentPollInterval = intervalMs;
-    _pollingTimer = setInterval(() => { refresh(true); }, intervalMs);
+    _pollingTimer = setInterval(() => { fetchDynamicData(false); }, intervalMs);
     console.info(`[RealtimeSync] 🔄 Polling thiết lập chu kỳ: ${intervalMs / 1000}s.`);
   }
 

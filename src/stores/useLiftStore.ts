@@ -28,7 +28,7 @@ interface LiftState {
   clearNotifications: () => void;
   addActivity: (activity: Omit<ActivityLog, 'id' | 'created_at'>) => void;
   fetchInitialData: () => Promise<void>;
-  fetchDynamicData: () => Promise<void>;
+  fetchDynamicData: (includeLogs?: boolean) => Promise<void>;
   simulateRealtime: () => void;
 }
 
@@ -39,6 +39,9 @@ let _cachedFloors: any[] = [];
 let _cachedStatusCodeMap: Record<number, string> = {};
 let _cachedUserMap: Record<string, string> = {};
 let _cachedFloorMap: Record<string, number> = {};
+
+let _isFetchingInitial = false;
+let _isFetchingDynamic = false;
 
 const STATIC_CACHE_KEY = 'liftflow_static_metadata_v2';
 
@@ -861,8 +864,11 @@ export const useLiftStore = create<LiftState>((set, get) => ({
     }));
   },
 
-  // Dynamic polling: fetch nhẹ các bảng biến động (lifts, transport_jobs, notifications, activityLogs) với LIMIT
-  fetchDynamicData: async () => {
+  // Dynamic polling: fetch lifts + transport_jobs (nhẹ, chạy mỗi chu kỳ polling/Realtime)
+  // Khi includeLogs=true (do Realtime INSERT vào notifications/activity_logs): fetch thêm 2 bảng đó
+  fetchDynamicData: async (includeLogs = false) => {
+    if (_isFetchingInitial || _isFetchingDynamic) return;
+    _isFetchingDynamic = true;
     // Nếu chưa có cache, ưu tiên nạp từ bộ nhớ đệm thiết bị trước khi gọi database
     if (_cachedFloors.length === 0 || _cachedUsers.length === 0) {
       if (!loadStaticMetadataCache()) {
@@ -875,8 +881,8 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       const [dbLifts, dbJobs, dbNotifs, dbActivities] = await Promise.all([
         db.lifts.getAll(),
         db.transportJobs.getAll(),
-        db.notifications.getAll(),
-        db.activityLogs.getAll()
+        includeLogs ? db.notifications.getAll() : Promise.resolve(null),
+        includeLogs ? db.activityLogs.getAll() : Promise.resolve(null)
       ]);
 
       const { mergedLifts, mappedJobs } = processLiftsAndJobs(
@@ -901,7 +907,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       }));
 
       const mappedActivities = processActivities(
-        dbActivities,
+        dbActivities || [],
         _cachedUsers,
         dbJobs,
         dbLifts,
@@ -911,16 +917,20 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       set(state => ({
         lifts: mergedLifts.length > 0 ? mergedLifts : state.lifts,
         jobs: mappedJobs,
-        notifications: mappedNotifs.length > 0 ? mappedNotifs : state.notifications,
-        activities: mappedActivities.length > 0 ? mappedActivities : state.activities
+        ...(dbNotifs !== null && mappedNotifs.length > 0 ? { notifications: mappedNotifs } : {}),
+        ...(dbActivities !== null && mappedActivities.length > 0 ? { activities: mappedActivities } : {})
       }));
     } catch (e) {
       console.warn('[LiftStore] fetchDynamicData gặp lỗi (sẽ thử lại ở chu kỳ kế tiếp):', e);
+    } finally {
+      _isFetchingDynamic = false;
     }
   },
 
   // Full fetch: tải toàn bộ 7 bảng và lưu cache dữ liệu tĩnh
   fetchInitialData: async () => {
+    if (_isFetchingInitial) return;
+    _isFetchingInitial = true;
     set({ isLoading: true });
     try {
       const [dbLifts, dbJobs, dbNotifs, dbActivities, dbStatusList, dbUsers, dbFloors] = await Promise.all([
@@ -977,7 +987,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       );
 
       // Map notifications
-      const mappedNotifs: AppNotification[] = dbNotifs.map(n => ({
+      const mappedNotifs: AppNotification[] = (dbNotifs || []).map(n => ({
         id: n.id,
         title: n.title,
         message: n.message,
@@ -1008,6 +1018,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       console.error('Failed to fetch initial data from database:', e);
       set({ lifts: mockLifts, jobs: mockJobs, notifications: mockNotifications, activities: mockActivities });
     } finally {
+      _isFetchingInitial = false;
       set({ isLoading: false });
     }
   },

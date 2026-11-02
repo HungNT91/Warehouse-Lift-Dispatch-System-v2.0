@@ -543,7 +543,7 @@ export const db = {
     }
   },
 
-  // 7. Lift Commands
+  // 7. Lift Commands (Lưu vào bộ nhớ đệm thiết bị localStorage, không gọi API Supabase tránh lãng phí request)
   liftCommands: {
     async create(cmd: Omit<DbLiftCommand, 'id' | 'created_at'>): Promise<DbLiftCommand> {
       const newCmd: DbLiftCommand = {
@@ -555,20 +555,6 @@ export const db = {
         lift_id: resolveLiftUuid(cmd.lift_id),
         created_by: resolveUserUuid(cmd.created_by)
       };
-      if (isSupabaseConfigured()) {
-        try {
-          const { data, error } = await getSupabase().from('lift_commands').insert([newCmd]).select().single();
-          if (error) {
-            console.warn('Supabase error creating lift_command:', error.message);
-          } else if (data) {
-            mockDbData.liftCommands.push(data);
-            saveMockData();
-            return data;
-          }
-        } catch (e) {
-          console.warn('Supabase exception creating lift_command:', e);
-        }
-      }
       mockDbData.liftCommands.push(newCmd);
       saveMockData();
       return newCmd;
@@ -982,7 +968,6 @@ export const db = {
       }
     },
     async create(timelineItem: Omit<DbJobTimeline, 'id' | 'action_time'>): Promise<DbJobTimeline> {
-      // Xác định job_id an toàn (tránh lỗi invalid input syntax for type bigint)
       let resolvedJobIdVal: any = null;
       if (typeof timelineItem.job_id === 'number') {
         resolvedJobIdVal = timelineItem.job_id;
@@ -1001,40 +986,7 @@ export const db = {
         remark: timelineItem.remark || null
       };
 
-      if (isSupabaseConfigured()) {
-        try {
-          // Lần 1: Thử insert không truyền cột id (để PostgreSQL tự sinh id)
-          const payload: any = {
-            action_time: newItem.action_time,
-            status: newItem.status,
-            action_by: newItem.action_by,
-            remark: newItem.remark
-          };
-          if (resolvedJobIdVal !== null) {
-            payload.job_id = resolvedJobIdVal;
-          }
-
-          const { data, error } = await getSupabase().from('job_timeline').insert([payload]).select().single();
-          if (error) {
-            console.warn('Supabase job_timeline insert warning:', error.message);
-            // Lần 2: Nếu lỗi bigint hoặc foreign key, thử insert với job_id: null
-            if (error.code === '22P02' || error.code === '23503' || error.message.includes('bigint') || error.message.includes('foreign key')) {
-              const retry = await getSupabase().from('job_timeline').insert([{ ...payload, job_id: null }]).select().single();
-              if (retry.data) {
-                mockDbData.jobTimeline.push(retry.data);
-                saveMockData();
-                return retry.data;
-              }
-            }
-          } else if (data) {
-            mockDbData.jobTimeline.push(data);
-            saveMockData();
-            return data;
-          }
-        } catch (e) {
-          console.warn('Supabase exception creating job_timeline:', e);
-        }
-      }
+      // Lưu vào bộ nhớ đệm thiết bị (localStorage), không gọi API Supabase tránh lãng phí request
       mockDbData.jobTimeline.push(newItem);
       saveMockData();
       return newItem;
