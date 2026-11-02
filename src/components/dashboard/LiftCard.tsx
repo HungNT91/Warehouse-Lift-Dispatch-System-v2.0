@@ -184,10 +184,6 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       operator: currentOperator
     });
 
-    if (realJobId) {
-      updateJob(realJobId, { status: 'MOVING' });
-    }
-
     toast.success(`Đã gửi hàng từ Tầng ${lift.current_floor} đến Tầng ${targetFloor}`);
   };
 
@@ -233,10 +229,6 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
         current_job_id: returnJobId || null,
         operator: currentOperator
       });
-
-      if (returnJobId) {
-        updateJob(returnJobId, { status: 'MOVING' });
-      }
 
       toast.success(`Đã xác nhận lấy hàng & tự động trả ${lift.lift_number.replace('Lift ', 'Tời ')} về Tầng ${target}`);
     } else {
@@ -295,10 +287,6 @@ export const LiftCard: React.FC<LiftCardProps> = ({ lift }) => {
       current_job_id: realJobId || null,
       operator: currentOperator
     });
-
-    if (realJobId) {
-      updateJob(realJobId, { status: 'MOVING' });
-    }
 
     toast.success(`Đã gọi ${lift.lift_number.replace('Lift ', 'Tời ')} từ Tầng ${lift.current_floor} về Tầng ${assignment.assigned_floor}`);
   };

@@ -2,8 +2,9 @@
  * useRealtimeSync.ts
  *
  * Cơ chế cập nhật dữ liệu tự động tối ưu hóa 2 lớp:
- *  - Layer 1 (Primary): Supabase Realtime WebSocket — cập nhật tức thì với Debounce 600ms
+ *  - Layer 1 (Primary): Supabase Realtime WebSocket — cập nhật tức thì với Debounce 800ms
  *  - Layer 2 (Fallback): Heartbeat 60s khi Realtime đang chạy, hoặc Polling 25s khi WebSocket gặp lỗi/mất kết nối
+ *  - Self-Action Throttling: Bỏ qua re-fetch khi thiết bị hiện tại vừa thực hiện thao tác (vì state đã cập nhật Optimistic UI)
  *
  * Trạng thái kết nối được lưu vào useLiftStore.syncStatus để UI hiển thị chính xác.
  */
@@ -13,6 +14,7 @@ import { useLiftStore } from '../stores/useLiftStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { isSupabaseConfigured } from '../api/dbClient';
 import { getSupabase } from '../api/supabase';
+import { isLocalActionActive } from '../utils/syncLock';
 
 const FALLBACK_POLL_INTERVAL_MS = 25_000; // 25s khi mất kết nối Realtime
 const REALTIME_HEARTBEAT_MS = 60_000;      // 60s heartbeat đồng bộ định kỳ khi Realtime bình thường
@@ -55,8 +57,12 @@ export function useRealtimeSync() {
     if (_debounceTimer) clearTimeout(_debounceTimer);
     _debounceTimer = setTimeout(() => {
       _debounceTimer = null;
+      // Nếu thao tác do chính thiết bị này vừa thực hiện -> state local đã cập nhật tức thì, không cần fetch lại
+      if (isLocalActionActive()) {
+        return;
+      }
       refresh(true);
-    }, 600);
+    }, 800);
   };
 
   useEffect(() => {
@@ -110,7 +116,7 @@ export function useRealtimeSync() {
             'postgres_changes' as any,
             { event, schema: 'public', table: name },
             () => {
-              // Mọi event đều qua debounced refresh và chỉ fetch dynamic data, không bao giờ fetch lại 7 bảng
+              // Mọi event đều qua debounced refresh và chỉ fetch dynamic data khi không phải self-action
               scheduleDebouncedRefresh();
             }
           )
@@ -166,4 +172,3 @@ export function useRealtimeSync() {
     }
   }
 }
-

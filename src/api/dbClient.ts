@@ -806,18 +806,25 @@ export const db = {
         let validFloorId: string | null = cachedFloors[0]?.id || null;
         let validUserId: string | null = cachedUsers[0]?.id || null;
 
-        if (!validLiftId || !validFloorId) {
-          try {
-            const { data: dbLifts } = await supabase.from('lifts').select('id').limit(1);
-            if (dbLifts && dbLifts.length > 0) validLiftId = dbLifts[0].id;
-            const { data: dbFloors } = await supabase.from('floors').select('id').limit(1);
-            if (dbFloors && dbFloors.length > 0) validFloorId = dbFloors[0].id;
-            const { data: dbUsers } = await supabase.from('users').select('id').limit(1);
-            if (dbUsers && dbUsers.length > 0) validUserId = dbUsers[0].id;
-          } catch { }
-        }
+        // Sử dụng cache thiết bị nếu có, không query database tránh lãng phí request
+        if (!validLiftId && mockDbData.lifts?.length > 0) validLiftId = mockDbData.lifts[0].id;
+        if (!validFloorId && mockDbData.floors?.length > 0) validFloorId = mockDbData.floors[0].id;
+        if (!validUserId && mockDbData.users?.length > 0) validUserId = mockDbData.users[0].id;
 
         const candidatePayloads: Record<string, any>[] = [
+          // Lượt 0: Truyền ID UUID đã sinh từ client (phòng trường hợp DB thiếu DEFAULT gen_random_uuid)
+          {
+            id: newJob.id,
+            job_no: jobNo,
+            lift_id: liftUuid,
+            from_floor: fromFloorUuid,
+            to_floor: toFloorUuid,
+            sender_id: senderUuid,
+            receiver_id: receiverUuid,
+            status: statusStr,
+            remark: remarkStr,
+            created_at: nowIso
+          },
           // Lượt 1: Schema chuẩn UUID (KHÔNG truyền id để tránh lỗi bigint/uuid)
           {
             job_no: jobNo,
@@ -910,7 +917,7 @@ export const db = {
         }
 
         if (savedData) {
-          const finalJob = { ...newJob, ...savedData };
+          const finalJob = { ...newJob, ...savedData, id: savedData.id || newJob.id };
           const idx = mockDbData.transportJobs.findIndex(j => j.id === newJob.id || j.job_no === newJob.job_no);
           if (idx !== -1) mockDbData.transportJobs[idx] = finalJob;
           saveMockData();
@@ -1151,7 +1158,8 @@ export const db = {
           const { data, error } = await getSupabase().from('activity_logs').insert([payload]).select().single();
 
           if (!error && data) {
-            mockDbData.activityLogs.unshift(data);
+            const finalAct = { ...newActivity, ...data, id: data.id || newActivity.id };
+            mockDbData.activityLogs.unshift(finalAct);
             saveMockData();
             return data;
           } else if (error) {

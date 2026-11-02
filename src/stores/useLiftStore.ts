@@ -7,6 +7,7 @@ import { speakLiftArrival } from '../utils/audio';
 import { isSameLift, safeParseTimestamp, getLocalDateString, getEffectiveAllowedFloors } from '../utils/time';
 import { getStoredRestrictionForLift, saveStoredFloorRestriction } from '../utils/floorRestrictions';
 import { broadcastLiftArrival } from '../utils/liftBroadcast';
+import { markLocalAction } from '../utils/syncLock';
 
 interface LiftState {
   lifts: Lift[];
@@ -38,6 +39,32 @@ let _cachedFloors: any[] = [];
 let _cachedStatusCodeMap: Record<number, string> = {};
 let _cachedUserMap: Record<string, string> = {};
 let _cachedFloorMap: Record<string, number> = {};
+
+const STATIC_CACHE_KEY = 'liftflow_static_metadata_v2';
+
+const loadStaticMetadataCache = (): boolean => {
+  try {
+    const raw = localStorage.getItem(STATIC_CACHE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && data.timestamp && Date.now() - data.timestamp < 3600 * 1000) {
+        _cachedStatusList = data.statusList || [];
+        _cachedUsers = data.users || [];
+        _cachedFloors = data.floors || [];
+        _cachedStatusCodeMap = data.statusCodeMap || {};
+        _cachedUserMap = data.userMap || {};
+        _cachedFloorMap = data.floorMap || {};
+        return _cachedFloors.length > 0 && _cachedUsers.length > 0;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not read static metadata cache:', e);
+  }
+  return false;
+};
+
+// Khởi tạo cache tĩnh từ bộ nhớ đệm thiết bị (localStorage) ngay khi khởi động
+loadStaticMetadataCache();
 
 // Helper: parseFloor using floorMap
 const parseFloorWithMap = (floor: string | number | null | undefined, floorMap: Record<string, number>): number => {
@@ -416,6 +443,8 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       return;
     }
 
+    markLocalAction(2500);
+
     const prevLift = get().lifts.find(l => l.id === liftId || l.lift_number === liftId);
 
     // Save to DB (lifts table)
@@ -563,6 +592,7 @@ export const useLiftStore = create<LiftState>((set, get) => ({
   },
 
   updateJob: async (jobId, updates) => {
+    markLocalAction(2500);
     const targetJob = get().jobs.find(j => j.id === jobId || j.code === jobId);
     const code = targetJob?.code || jobId;
     const realId = targetJob?.id || jobId;
@@ -688,34 +718,36 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       newJob.id = createdDbJob.id;
     }
 
-    // Save Activity Log to Database
+    // Đánh dấu thao tác cục bộ để Realtime WebSocket không re-fetch lặp lại
+    markLocalAction(2500);
+
     const logDesc = `Đã tạo công việc #${newCode} (T${newJob.source_floor} ➔ T${newJob.target_floor} - ${newJob.item_type})`;
-    await db.activityLogs.add({
-      user_id: newJob.created_by,
-      action: 'CREATE_JOB',
-      table_name: 'transport_jobs',
-      record_id: isUuid(newJob.id) ? newJob.id : newCode,
-      description: logDesc,
-      event_type: 'JOB_EVENT'
-    }).catch(console.error);
 
-    // Save Job Timeline to Database
-    await db.jobTimeline.create({
-      job_id: newJob.id,
-      status: newJob.status,
-      action_by: newJob.created_by,
-      remark: logDesc
-    }).catch(console.error);
-
-    // Save Notification to Database
-    await db.notifications.create({
-      job_id: newJob.id,
-      notification_type: 'NEW_JOB',
-      receiver_id: newJob.created_by,
-      title: 'Đã tạo công việc mới',
-      message: `Công việc #${newCode} vừa được tạo từ Tầng ${newJob.source_floor} đến Tầng ${newJob.target_floor}.`,
-      status: 'SENT'
-    }).catch(console.error);
+    // Ghi nhật ký & thông báo phụ song song (non-blocking) không làm chậm giao diện
+    Promise.allSettled([
+      db.activityLogs.add({
+        user_id: newJob.created_by,
+        action: 'CREATE_JOB',
+        table_name: 'transport_jobs',
+        record_id: isUuid(newJob.id) ? newJob.id : newCode,
+        description: logDesc,
+        event_type: 'JOB_EVENT'
+      }),
+      db.jobTimeline.create({
+        job_id: newJob.id,
+        status: newJob.status,
+        action_by: newJob.created_by,
+        remark: logDesc
+      }),
+      db.notifications.create({
+        job_id: newJob.id,
+        notification_type: 'NEW_JOB',
+        receiver_id: newJob.created_by,
+        title: 'Đã tạo công việc mới',
+        message: `Công việc #${newCode} vừa được tạo từ Tầng ${newJob.source_floor} đến Tầng ${newJob.target_floor}.`,
+        status: 'SENT'
+      })
+    ]).catch(() => {});
 
     const newActivity: ActivityLog = {
       id: `act-${Date.now()}`,
@@ -831,10 +863,12 @@ export const useLiftStore = create<LiftState>((set, get) => ({
 
   // Dynamic polling: fetch nhẹ các bảng biến động (lifts, transport_jobs, notifications, activityLogs) với LIMIT
   fetchDynamicData: async () => {
-    // Nếu chưa từng có cache dữ liệu tĩnh (floors, users, statuses), chạy fetchInitialData một lần duy nhất
+    // Nếu chưa có cache, ưu tiên nạp từ bộ nhớ đệm thiết bị trước khi gọi database
     if (_cachedFloors.length === 0 || _cachedUsers.length === 0) {
-      await get().fetchInitialData();
-      return;
+      if (!loadStaticMetadataCache()) {
+        await get().fetchInitialData();
+        return;
+      }
     }
 
     try {
@@ -918,6 +952,19 @@ export const useLiftStore = create<LiftState>((set, get) => ({
       dbFloors.forEach(f => {
         _cachedFloorMap[f.id] = f.floor_no;
       });
+
+      // Lưu vào bộ nhớ đệm của thiết bị (localStorage) với hạn sử dụng 1 giờ
+      try {
+        localStorage.setItem(STATIC_CACHE_KEY, JSON.stringify({
+          statusList: dbStatusList,
+          users: dbUsers,
+          floors: dbFloors,
+          statusCodeMap: _cachedStatusCodeMap,
+          userMap: _cachedUserMap,
+          floorMap: _cachedFloorMap,
+          timestamp: Date.now()
+        }));
+      } catch (err) { }
 
       const { mergedLifts, mappedJobs } = processLiftsAndJobs(
         dbLifts,
