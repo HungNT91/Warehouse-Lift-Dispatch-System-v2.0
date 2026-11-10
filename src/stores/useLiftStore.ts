@@ -278,24 +278,29 @@ function processLiftsAndJobs(
         : (localHasRestr ? localLift.restriction_date : null);
 
     // Phát hiện thang cập bến qua Polling / Realtime DB sync
-    if (localLift.status === 'MOVING' && (dbLift.status === 'WAITING_PICKUP' || dbLift.status === 'AVAILABLE')) {
+    const isArriving = (
+      (localLift.status === 'MOVING' && (dbLift.status === 'WAITING_PICKUP' || dbLift.status === 'AVAILABLE')) ||
+      (localLift.status !== 'WAITING_PICKUP' && dbLift.status === 'WAITING_PICKUP') ||
+      (localLift.status === 'WAITING_PICKUP' && dbLift.status === 'WAITING_PICKUP' && localLift.current_floor !== dbLift.current_floor)
+    );
+    if (isArriving) {
       const arrivedFloor = dbLift.current_floor || dbLift.destination_floor || localLift.destination_floor || 1;
       broadcastLiftArrival(dbLift.id, dbLift.lift_number, arrivedFloor, dbLift.status === 'WAITING_PICKUP');
     }
 
     if (localLift.status === 'MOVING') {
-      const newStatus = dbLift.status === 'WAITING_PICKUP' ? 'WAITING_PICKUP' : 'MOVING';
+      const newStatus = (dbLift.status === 'WAITING_PICKUP' || dbLift.status === 'AVAILABLE') ? dbLift.status : 'MOVING';
       const validLocalProg = typeof localLift.progress === 'number' && !isNaN(localLift.progress) ? localLift.progress : 0;
       return {
         ...dbLift,
         status: newStatus,
-        progress: newStatus === 'MOVING' ? validLocalProg : 100,
+        progress: newStatus === 'MOVING' ? validLocalProg : (newStatus === 'AVAILABLE' ? 0 : 100),
         elapsed_time: localLift.elapsed_time,
         pickup_start_time: dbLift.pickup_start_time ?? localLift.pickup_start_time,
-        destination_floor: dbLift.destination_floor ?? localLift.destination_floor,
-        source_floor: dbLift.source_floor ?? localLift.source_floor,
-        current_job_id: dbLift.current_job_id ?? localLift.current_job_id,
-        operator: localLift.operator || dbLift.operator || null,
+        destination_floor: newStatus === 'AVAILABLE' ? null : (dbLift.destination_floor ?? localLift.destination_floor),
+        source_floor: newStatus === 'AVAILABLE' ? null : (dbLift.source_floor ?? localLift.source_floor),
+        current_job_id: newStatus === 'AVAILABLE' ? null : (dbLift.current_job_id ?? localLift.current_job_id),
+        operator: newStatus === 'AVAILABLE' ? null : (localLift.operator || dbLift.operator || null),
         last_update: dbLift.last_update ?? localLift.last_update,
         allowed_floors: resolvedAllowedFloors,
         restricted_by_user_id: resolvedRestrictedByUserId,
@@ -895,30 +900,34 @@ export const useLiftStore = create<LiftState>((set, get) => ({
         _cachedFloorMap
       );
 
-      const mappedNotifs: AppNotification[] = dbNotifs.map(n => ({
-        id: n.id,
-        title: n.title,
-        message: n.message,
-        severity: (n.notification_type && (n.notification_type.includes('WARNING') || n.notification_type.includes('URGENT'))) ? 'warning' : 'info',
-        category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'system' : 'job',
-        is_read: n.status === 'READ',
-        created_at: n.created_at,
-        link_id: n.job_id
-      }));
+      const mappedNotifs: AppNotification[] = dbNotifs
+        ? dbNotifs.map(n => ({
+            id: n.id,
+            title: n.title,
+            message: n.message,
+            severity: (n.notification_type && (n.notification_type.includes('WARNING') || n.notification_type.includes('URGENT'))) ? 'warning' : 'info',
+            category: (n.notification_type?.includes('AUDIO_DISPATCH') || n.message?.includes('[AUDIO_DISPATCH')) ? 'system' : 'job',
+            is_read: n.status === 'READ',
+            created_at: n.created_at,
+            link_id: n.job_id
+          }))
+        : [];
 
-      const mappedActivities = processActivities(
-        dbActivities || [],
-        _cachedUsers,
-        dbJobs,
-        dbLifts,
-        _cachedUserMap
-      );
+      const mappedActivities = dbActivities
+        ? processActivities(
+            dbActivities,
+            _cachedUsers,
+            dbJobs,
+            dbLifts,
+            _cachedUserMap
+          )
+        : [];
 
       set(state => ({
         lifts: mergedLifts.length > 0 ? mergedLifts : state.lifts,
         jobs: mappedJobs,
-        ...(dbNotifs !== null && mappedNotifs.length > 0 ? { notifications: mappedNotifs } : {}),
-        ...(dbActivities !== null && mappedActivities.length > 0 ? { activities: mappedActivities } : {})
+        ...(dbNotifs !== null ? { notifications: mappedNotifs } : {}),
+        ...(dbActivities !== null ? { activities: mappedActivities } : {})
       }));
     } catch (e) {
       console.warn('[LiftStore] fetchDynamicData gặp lỗi (sẽ thử lại ở chu kỳ kế tiếp):', e);

@@ -69,7 +69,7 @@ export function useRealtimeSync() {
       }
       // Truyền includeLogs để chỉ fetch notifications/activities khi thực sự có event mới
       fetchDynamicData(needLogs);
-    }, 800);
+    }, 400);
   };
 
   useEffect(() => {
@@ -124,6 +124,7 @@ export function useRealtimeSync() {
         { name: 'transport_jobs', event: '*', withLogs: false },
         { name: 'notifications', event: 'INSERT', withLogs: true },
         { name: 'activity_logs', event: 'INSERT', withLogs: true },
+        { name: 'daily_assignments', event: '*', withLogs: false },
       ];
 
       let subscribedCount = 0;
